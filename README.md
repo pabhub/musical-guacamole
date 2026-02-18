@@ -87,9 +87,11 @@ This project now exposes a helper endpoint to document what is currently returne
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+pip install -e '.[dev]'
 uvicorn app.main:app --reload
 ```
+
+`.[dev]` installs optional development dependencies (for this project: `pytest` and `pytest-cov`) in addition to runtime dependencies. Quotes are required in `zsh`.
 
 Open:
 
