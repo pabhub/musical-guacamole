@@ -51,7 +51,7 @@ class OutputMeasurement(BaseModel):
 
 
 class MeasurementResponse(BaseModel):
-    station: Station
+    station: str
     aggregation: TimeAggregation
     selected_types: list[MeasurementType]
     timezone_input: str
@@ -66,7 +66,7 @@ class AvailableDataResponse(BaseModel):
 
 
 class LatestAvailabilityResponse(BaseModel):
-    station: Station
+    station: str
     checked_at_utc: datetime
     newest_observation_utc: datetime | None = None
     suggested_start_utc: datetime | None = None

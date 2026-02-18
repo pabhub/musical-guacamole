@@ -1,8 +1,11 @@
 {
-  "name": "aemet-antarctica-frontend",
+  "name": "aemet-antarctic-frontend",
   "private": true,
   "version": "1.0.0",
   "scripts": {
     "build": "../scripts/build_frontend.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

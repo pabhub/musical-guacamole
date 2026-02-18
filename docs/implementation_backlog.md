@@ -19,19 +19,19 @@ This backlog turns the AEMET endpoint research into concrete, incremental work i
 - Status: Todo
 - Scope:
   - Add searchable station list component backed by `/api/metadata/stations`
-  - Keep current Antarctica query mode unchanged until generic endpoint is ready
+  - Keep current Antarctic query mode unchanged until generic endpoint is ready
 - Acceptance criteria:
   - User can browse/filter station catalog in UI
   - UI displays cache freshness timestamp and source count
 
-### 3. Generic station query endpoint (non-Antarctica)
+### 3. Generic station query endpoint (non-Antarctic)
 - Status: Todo
 - Scope:
   - New endpoint using station code directly (e.g., `idema`) instead of fixed enum
-  - Preserve existing Antarctica endpoint for backwards compatibility
+  - Preserve existing Antarctic endpoint for backwards compatibility
 - Acceptance criteria:
   - Query works for arbitrary station codes returned by catalog
-  - Existing `/api/antartida/...` behavior remains unchanged
+  - Existing `/api/antarctic/...` behavior remains unchanged
 
 ## P1: Climate Context Features
 

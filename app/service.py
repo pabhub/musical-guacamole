@@ -9,33 +9,32 @@ from zoneinfo import ZoneInfo
 
 from app.aemet_client import AemetClient
 from app.database import SQLiteRepository
-from app.models import (
-    LatestAvailabilityResponse,
-    MeasurementType,
-    OutputMeasurement,
-    SourceMeasurement,
-    Station,
-    StationCatalogResponse,
-    TimeAggregation,
-)
+from app.models import LatestAvailabilityResponse, MeasurementType, OutputMeasurement, SourceMeasurement, Station, StationCatalogResponse, TimeAggregation
 from app.settings import Settings
 
 MADRID_TZ = ZoneInfo("Europe/Madrid")
 UTC = ZoneInfo("UTC")
 logger = logging.getLogger(__name__)
 
-class AntartidaService:
+class AntarcticService:
     def __init__(self, settings: Settings, repository: SQLiteRepository, aemet_client: AemetClient) -> None:
         self.settings = settings
         self.repository = repository
         self.aemet_client = aemet_client
 
-    def station_id_for(self, station: Station) -> str:
-        return self.settings.gabriel_station_id if station == Station.GABRIEL_DE_CASTILLA else self.settings.juan_station_id
+    def station_id_for(self, station: str | Station) -> str:
+        if isinstance(station, Station):
+            return self.settings.gabriel_station_id if station == Station.GABRIEL_DE_CASTILLA else self.settings.juan_station_id
+        normalized = station.strip()
+        if normalized == Station.GABRIEL_DE_CASTILLA.value:
+            return self.settings.gabriel_station_id
+        if normalized == Station.JUAN_CARLOS_I.value:
+            return self.settings.juan_station_id
+        return normalized
 
     def get_data(
         self,
-        station: Station,
+        station: str | Station,
         start_local: datetime,
         end_local: datetime,
         aggregation: TimeAggregation,
@@ -69,8 +68,9 @@ class AntartidaService:
         transformed = self._aggregate(rows, aggregation)
         return [self._to_output(row, selected_types) for row in transformed]
 
-    def get_latest_availability(self, station: Station) -> LatestAvailabilityResponse:
+    def get_latest_availability(self, station: str | Station) -> LatestAvailabilityResponse:
         station_id = self.station_id_for(station)
+        station_label = station.value if isinstance(station, Station) else station
         checked_at_utc = datetime.now(UTC)
         probe_windows_hours = [6, 24, 72, 168, 336, 720, 2160, 4320, 8760]
 
@@ -85,7 +85,7 @@ class AntartidaService:
             suggested_start = max(start_utc, newest - timedelta(hours=24))
             suggested_aggregation = TimeAggregation.NONE if (suggested_end - suggested_start) <= timedelta(days=2) else TimeAggregation.HOURLY
             return LatestAvailabilityResponse(
-                station=station,
+                station=station_label,
                 checked_at_utc=checked_at_utc,
                 newest_observation_utc=newest,
                 suggested_start_utc=suggested_start,
@@ -96,7 +96,7 @@ class AntartidaService:
             )
 
         return LatestAvailabilityResponse(
-            station=station,
+            station=station_label,
             checked_at_utc=checked_at_utc,
             note="No observations were found in the last 365 days for this station.",
         )

@@ -23,7 +23,7 @@ from app.models import (
     StationCatalogResponse,
     TimeAggregation,
 )
-from app.service import AntartidaService
+from app.service import AntarcticService
 from app.settings import Settings, get_settings
 
 logging.basicConfig(
@@ -34,7 +34,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AEMET Antarctica API", version="1.0.0")
+app = FastAPI(title="AEMET Antarctic API", version="1.0.0")
 
 CURRENTLY_EXPOSED_FIELDS = {
     "nombre": "Station name",
@@ -62,10 +62,10 @@ if frontend_dist.exists():
     app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
 
 
-def get_service(settings: Settings = Depends(get_settings)) -> AntartidaService:
+def get_service(settings: Settings = Depends(get_settings)) -> AntarcticService:
     repository = SQLiteRepository(settings.database_url)
     client = AemetClient(settings.aemet_api_key, settings.request_timeout_seconds)
-    return AntartidaService(settings=settings, repository=repository, aemet_client=client)
+    return AntarcticService(settings=settings, repository=repository, aemet_client=client)
 
 
 @app.get("/")
@@ -87,7 +87,7 @@ def config_page() -> FileResponse:
 @app.get("/api/metadata/available-data", response_model=AvailableDataResponse)
 def available_data() -> AvailableDataResponse:
     return AvailableDataResponse(
-        source_endpoint="/api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
+        source_endpoint="/api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
         currently_exposed_fields=CURRENTLY_EXPOSED_FIELDS,
         additional_fields_often_available=ADDITIONAL_FIELDS_OFTEN_AVAILABLE,
     )
@@ -95,15 +95,15 @@ def available_data() -> AvailableDataResponse:
 
 @app.get("/api/metadata/latest-availability/station/{identificacion}", response_model=LatestAvailabilityResponse)
 def latest_availability(
-    identificacion: Station,
-    service: AntartidaService = Depends(get_service),
+    identificacion: str,
+    service: AntarcticService = Depends(get_service),
 ) -> LatestAvailabilityResponse:
     try:
         return service.get_latest_availability(identificacion)
     except RuntimeError as exc:
         logger.warning(
             "Upstream AEMET failure on availability endpoint: station=%s detail=%s",
-            identificacion.value,
+            identificacion,
             str(exc),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -112,7 +112,7 @@ def latest_availability(
 @app.get("/api/metadata/stations", response_model=StationCatalogResponse)
 def stations_catalog(
     force_refresh: bool = Query(False, description="Force refresh from AEMET instead of DB cache"),
-    service: AntartidaService = Depends(get_service),
+    service: AntarcticService = Depends(get_service),
 ) -> StationCatalogResponse:
     try:
         return service.get_station_catalog(force_refresh=force_refresh)
@@ -122,17 +122,22 @@ def stations_catalog(
 
 
 @app.get(
-    "/api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
+    "/api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
     response_model=MeasurementResponse,
 )
-def antartida_data(
+@app.get(
+    "/api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
+    response_model=MeasurementResponse,
+    include_in_schema=False,
+)
+def antarctic_data(
     fechaIniStr: str,
     fechaFinStr: str,
-    identificacion: Station,
+    identificacion: str,
     location: str = Query("UTC", description="Timezone location, e.g. Europe/Berlin"),
     aggregation: TimeAggregation = Query(TimeAggregation.NONE),
     types: list[MeasurementType] = Query(default=[]),
-    service: AntartidaService = Depends(get_service),
+    service: AntarcticService = Depends(get_service),
 ) -> MeasurementResponse:
     try:
         tz = ZoneInfo(location)
@@ -159,7 +164,7 @@ def antartida_data(
     except RuntimeError as exc:
         logger.warning(
             "Upstream AEMET failure on data endpoint: station=%s start=%s end=%s detail=%s",
-            identificacion.value,
+            identificacion,
             start.isoformat(),
             end.isoformat(),
             str(exc),
@@ -176,17 +181,21 @@ def antartida_data(
 
 
 @app.get(
-    "/api/antartida/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
+    "/api/antarctic/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
 )
-def export_antartida_data(
+@app.get(
+    "/api/antartida/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}",
+    include_in_schema=False,
+)
+def export_antarctic_data(
     fechaIniStr: str,
     fechaFinStr: str,
-    identificacion: Station,
+    identificacion: str,
     location: str = Query("UTC", description="Timezone location, e.g. Europe/Berlin"),
     aggregation: TimeAggregation = Query(TimeAggregation.NONE),
     types: list[MeasurementType] = Query(default=[]),
     format: str = Query("csv", pattern="^(csv|parquet)$"),
-    service: AntartidaService = Depends(get_service),
+    service: AntarcticService = Depends(get_service),
 ) -> Response:
     try:
         tz = ZoneInfo(location)
@@ -213,14 +222,14 @@ def export_antartida_data(
     except RuntimeError as exc:
         logger.warning(
             "Upstream AEMET failure on export endpoint: station=%s start=%s end=%s format=%s detail=%s",
-            identificacion.value,
+            identificacion,
             start.isoformat(),
             end.isoformat(),
             format,
             str(exc),
         )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    filename_base = f"{identificacion.value}_{start.strftime('%Y%m%dT%H%M%S')}_{end.strftime('%Y%m%dT%H%M%S')}_{aggregation.value}"
+    filename_base = f"{identificacion}_{start.strftime('%Y%m%dT%H%M%S')}_{end.strftime('%Y%m%dT%H%M%S')}_{aggregation.value}"
 
     if format == "csv":
         csv_content = _build_csv(data)

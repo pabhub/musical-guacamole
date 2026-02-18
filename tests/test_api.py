@@ -29,7 +29,7 @@ class ErrorService:
 class AvailabilityService:
     def get_latest_availability(self, station):
         return {
-            "station": station.value,
+            "station": station,
             "checked_at_utc": "2026-02-18T10:00:00+00:00",
             "newest_observation_utc": "2026-02-18T08:50:00+00:00",
             "suggested_start_utc": "2026-02-17T08:50:00+00:00",
@@ -50,7 +50,7 @@ class StationsService:
                 {
                     "stationId": "89064",
                     "stationName": "GABRIEL DE CASTILLA",
-                    "province": "ANTARTIDA",
+                    "province": "ANTARCTIC",
                     "latitude": -62.97,
                     "longitude": -60.68,
                     "altitude": 14.0,
@@ -65,7 +65,7 @@ client = TestClient(app)
 
 def test_endpoint_happy_path():
     response = client.get(
-        "/api/antartida/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+        "/api/antarctic/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
         params={"location": "UTC", "aggregation": "none", "types": ["pressure"]},
     )
 
@@ -77,7 +77,7 @@ def test_endpoint_happy_path():
 
 def test_endpoint_invalid_timezone():
     response = client.get(
-        "/api/antartida/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+        "/api/antarctic/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
         params={"location": "Mars/Base"},
     )
     assert response.status_code == 400
@@ -95,7 +95,7 @@ def test_available_data_metadata_endpoint():
 
 def test_export_csv_returns_downloadable_file():
     response = client.get(
-        "/api/antartida/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+        "/api/antarctic/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
         params={"location": "UTC", "aggregation": "none", "format": "csv", "types": ["pressure"]},
     )
 
@@ -108,7 +108,7 @@ def test_export_csv_returns_downloadable_file():
 
 def test_export_parquet_returns_not_implemented_without_extra_deps():
     response = client.get(
-        "/api/antartida/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+        "/api/antarctic/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
         params={"location": "UTC", "aggregation": "none", "format": "parquet"},
     )
 
@@ -121,7 +121,7 @@ def test_endpoint_runtime_error_returns_502():
     app.dependency_overrides[get_service] = lambda: ErrorService()
     try:
         response = client.get(
-            "/api/antartida/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+            "/api/antarctic/datos/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
             params={"location": "UTC"},
         )
         assert response.status_code == 502
@@ -134,7 +134,7 @@ def test_export_runtime_error_returns_502():
     app.dependency_overrides[get_service] = lambda: ErrorService()
     try:
         response = client.get(
-            "/api/antartida/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
+            "/api/antarctic/export/fechaini/2024-01-01T00:00:00/fechafin/2024-01-01T01:00:00/estacion/gabriel-de-castilla",
             params={"location": "UTC", "format": "csv"},
         )
         assert response.status_code == 502

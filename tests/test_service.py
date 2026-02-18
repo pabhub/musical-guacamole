@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.models import MeasurementType, SourceMeasurement, Station, StationCatalogItem, TimeAggregation
-from app.service import AntartidaService
+from app.service import AntarcticService
 from app.settings import Settings
 
 UTC = ZoneInfo("UTC")
@@ -95,7 +95,7 @@ def build_service(rows, has_fresh_cache=False):
     )
     repo = FakeRepo(rows, has_fresh_cache=has_fresh_cache)
     client = FakeClient(rows)
-    return AntartidaService(settings, repo, client), repo, client
+    return AntarcticService(settings, repo, client), repo, client
 
 
 def test_no_aggregation_returns_all_types_by_default():
@@ -253,7 +253,7 @@ def test_latest_availability_returns_suggested_window_when_data_found():
     )
     repo = FakeRepo([], has_fresh_cache=False)
     client = FakeLatestClient({24: rows})
-    service = AntartidaService(settings, repo, client)
+    service = AntarcticService(settings, repo, client)
 
     out = service.get_latest_availability(Station.GABRIEL_DE_CASTILLA)
 
@@ -278,7 +278,7 @@ def test_latest_availability_no_data_returns_note():
     )
     repo = FakeRepo([], has_fresh_cache=False)
     client = FakeLatestClient({})
-    service = AntartidaService(settings, repo, client)
+    service = AntarcticService(settings, repo, client)
 
     out = service.get_latest_availability(Station.JUAN_CARLOS_I)
 
@@ -306,7 +306,7 @@ def test_station_catalog_cache_hit_uses_db_rows():
     repo.station_rows = [StationCatalogItem(stationId="9999A", stationName="Test Station")]
     repo.station_fetched_at = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
     client = FakeInventoryClient([])
-    service = AntartidaService(settings, repo, client)
+    service = AntarcticService(settings, repo, client)
 
     out = service.get_station_catalog(force_refresh=False)
 
@@ -329,7 +329,7 @@ def test_station_catalog_force_refresh_fetches_remote_and_updates_cache():
     )
     repo = FakeRepo([], has_fresh_cache=False)
     client = FakeInventoryClient(rows)
-    service = AntartidaService(settings, repo, client)
+    service = AntarcticService(settings, repo, client)
 
     out = service.get_station_catalog(force_refresh=True)
 

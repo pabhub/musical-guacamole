@@ -32,6 +32,7 @@ const applySuggestedBtn = document.getElementById('apply-suggested');
 const stationSearchInput = document.getElementById('station-search');
 const stationCatalogMeta = document.getElementById('station-catalog-meta');
 const stationCatalogBody = document.getElementById('station-catalog-body');
+const provinceSelect = document.getElementById('province-select');
 const map = L.map('map-canvas', { zoomControl: true }).setView([-62.0, -58.5], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -39,6 +40,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const flowLayer = L.layerGroup().addTo(map);
+const stationCatalogLayer = L.layerGroup().addTo(map);
 let timelineFrames = [];
 let rowsByTimestamp = new Map();
 let playingTimer = null;
@@ -52,6 +54,7 @@ let suggestedStartLocal = '';
 let suggestedEndLocal = '';
 let suggestedAggregation = '';
 let stationCatalogRows = [];
+const defaultProvince = 'ANTARCTIC';
 function browserTimeZone() {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return zone && zone.trim() ? zone : 'UTC';
@@ -107,13 +110,101 @@ function normalizeText(value) {
         .toLowerCase()
         .trim();
 }
-function mapCatalogItemToQueryStation(item) {
-    const name = normalizeText(item.stationName);
-    if (name.includes('gabriel de castilla'))
-        return 'gabriel-de-castilla';
-    if (name.includes('juan carlos i'))
-        return 'juan-carlos-i';
-    return null;
+function normalizeProvince(value) {
+    const normalized = normalizeText(value ?? '').toUpperCase();
+    if (normalized === 'ANTARTIDA' || normalized === 'ANTARCTIDA') {
+        return 'ANTARCTIC';
+    }
+    return normalized;
+}
+function selectedProvince() {
+    return provinceSelect.value || defaultProvince;
+}
+function filteredStationsByProvince() {
+    const province = normalizeProvince(selectedProvince());
+    return stationCatalogRows.filter((row) => normalizeProvince(row.province) === province);
+}
+function setProvinceOptions(rows) {
+    const provinceLabels = new Map();
+    for (const row of rows) {
+        const canonical = normalizeProvince(row.province);
+        if (!canonical)
+            continue;
+        const label = (row.province ?? '').trim() || canonical;
+        if (!provinceLabels.has(canonical))
+            provinceLabels.set(canonical, label);
+    }
+    const provinces = Array.from(provinceLabels.keys()).sort((a, b) => a.localeCompare(b));
+    provinceSelect.innerHTML = '';
+    if (provinces.length === 0 || !provinces.includes(defaultProvince)) {
+        provinces.unshift(defaultProvince);
+    }
+    for (const province of provinces) {
+        const option = document.createElement('option');
+        option.value = province;
+        option.textContent = province === defaultProvince ? 'Antarctic' : (provinceLabels.get(province) ?? province);
+        provinceSelect.appendChild(option);
+    }
+    provinceSelect.value = provinces.includes(defaultProvince) ? defaultProvince : provinces[0];
+}
+function syncProvinceWithStation(stationId) {
+    const row = stationCatalogRows.find((item) => item.stationId === stationId);
+    if (!row)
+        return;
+    const province = normalizeProvince(row.province);
+    if (!province)
+        return;
+    if (Array.from(provinceSelect.options).some((option) => option.value === province)) {
+        provinceSelect.value = province;
+    }
+}
+function populateStationSelect(rows) {
+    const previous = stationSelect.value;
+    stationSelect.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select station';
+    stationSelect.appendChild(placeholder);
+    for (const row of rows) {
+        const option = document.createElement('option');
+        option.value = row.stationId;
+        const province = row.province ? ` (${row.province})` : '';
+        option.textContent = `${row.stationName} [${row.stationId}]${province}`;
+        stationSelect.appendChild(option);
+    }
+    if (previous && rows.some((r) => r.stationId === previous))
+        stationSelect.value = previous;
+    else
+        stationSelect.value = '';
+}
+function renderStationMarkers(rows) {
+    stationCatalogLayer.clearLayers();
+    const bounds = [];
+    for (const row of rows) {
+        if (row.latitude == null || row.longitude == null)
+            continue;
+        const lat = Number(row.latitude);
+        const lon = Number(row.longitude);
+        const marker = L.circleMarker([lat, lon], {
+            radius: 4,
+            color: '#334155',
+            fillColor: '#94a3b8',
+            fillOpacity: 0.9,
+            weight: 1,
+        });
+        marker.bindPopup(`<strong>${row.stationName}</strong><br/>ID: ${row.stationId}<br/>Province: ${row.province ?? 'n/a'}`);
+        marker.on('click', async () => {
+            syncProvinceWithStation(row.stationId);
+            applyStationFilters(false);
+            stationSelect.value = row.stationId;
+            await fetchLatestAvailability();
+            statusEl.textContent = `Selected query station: ${row.stationName} [${row.stationId}].`;
+        });
+        marker.addTo(stationCatalogLayer);
+        bounds.push([lat, lon]);
+    }
+    if (bounds.length > 0)
+        map.fitBounds(bounds, { padding: [16, 16], maxZoom: 6 });
 }
 function setDefaultRange() {
     const end = new Date();
@@ -185,7 +276,7 @@ function renderSummary(totalRows, mappedRows) {
 function exportUrl(format) {
     if (!lastQueryBasePath)
         return '';
-    return `/api/antartida/export/${lastQueryBasePath}?${lastQueryParams}&format=${format}`;
+    return `/api/antarctic/export/${lastQueryBasePath}?${lastQueryParams}&format=${format}`;
 }
 async function downloadExport(format) {
     if (!lastQueryBasePath) {
@@ -466,7 +557,7 @@ function renderTable(data) {
 function renderStationCatalog(filter) {
     stationCatalogBody.innerHTML = '';
     const q = normalizeText(filter);
-    const rows = stationCatalogRows
+    const rows = filteredStationsByProvince()
         .filter((row) => {
         if (!q)
             return true;
@@ -482,15 +573,18 @@ function renderStationCatalog(filter) {
     }
     for (const row of rows) {
         const tr = document.createElement('tr');
-        const queryStation = mapCatalogItemToQueryStation(row);
-        if (queryStation) {
-            tr.innerHTML = `<td>${row.stationId}</td><td>${row.stationName}</td><td>${row.province ?? ''}</td><td><button type="button" class="tiny-btn secondary" data-query-station="${queryStation}">Use in query</button></td>`;
-        }
-        else {
-            tr.innerHTML = `<td>${row.stationId}</td><td>${row.stationName}</td><td>${row.province ?? ''}</td><td><span class="tag-muted">Catalog only</span></td>`;
-        }
+        tr.innerHTML = `<td>${row.stationId}</td><td>${row.stationName}</td><td>${row.province ?? ''}</td><td><button type="button" class="tiny-btn secondary" data-query-station="${row.stationId}">Use in query</button></td>`;
         stationCatalogBody.appendChild(tr);
     }
+}
+function applyStationFilters(resetSelectedStation = true) {
+    const previous = stationSelect.value;
+    const rows = filteredStationsByProvince();
+    populateStationSelect(rows);
+    if (!resetSelectedStation && previous && rows.some((row) => row.stationId === previous)) {
+        stationSelect.value = previous;
+    }
+    renderStationCatalog(stationSearchInput.value);
 }
 async function fetchStationCatalog() {
     stationCatalogMeta.textContent = 'Loading station catalog…';
@@ -505,20 +599,32 @@ async function fetchStationCatalog() {
         }
         const payload = json;
         stationCatalogRows = payload.data ?? [];
+        setProvinceOptions(stationCatalogRows);
+        applyStationFilters();
+        renderStationMarkers(stationCatalogRows);
         const checkedAt = formatDateTime(payload.checked_at_utc);
         const cachedUntil = formatDateTime(payload.cached_until_utc);
         const cacheLabel = payload.cache_hit ? 'cache' : 'upstream refresh';
         stationCatalogMeta.textContent = `Loaded ${stationCatalogRows.length} stations (${cacheLabel}). Checked: ${checkedAt}. Cache valid until: ${cachedUntil}.`;
-        renderStationCatalog(stationSearchInput.value);
     }
     catch {
         stationCatalogRows = [];
+        setProvinceOptions([]);
+        applyStationFilters();
+        renderStationMarkers([]);
         stationCatalogMeta.textContent = 'Unable to load station catalog due to network error.';
-        renderStationCatalog(stationSearchInput.value);
     }
 }
 async function fetchLatestAvailability() {
     const station = stationSelect.value;
+    if (!station) {
+        availabilityMessage.textContent = 'Select a station to check latest availability.';
+        applySuggestedBtn.disabled = true;
+        suggestedStartLocal = '';
+        suggestedEndLocal = '';
+        suggestedAggregation = '';
+        return;
+    }
     availabilityMessage.textContent = 'Checking latest data from AEMET…';
     applySuggestedBtn.disabled = true;
     suggestedStartLocal = '';
@@ -560,6 +666,11 @@ async function runQuery() {
     const station = stationSelect.value;
     const location = configuredInputTimeZone();
     const aggregation = aggregationSelect.value;
+    if (!station) {
+        statusEl.textContent = 'Select a station before running the query.';
+        setLoading(false);
+        return;
+    }
     if (!start || !end) {
         statusEl.textContent = 'Please choose valid start/end datetimes.';
         setLoading(false);
@@ -575,7 +686,7 @@ async function runQuery() {
         params.append('types', type);
     const queryPath = `fechaini/${start}/fechafin/${end}/estacion/${station}`;
     const queryParams = params.toString();
-    const url = `/api/antartida/datos/${queryPath}?${queryParams}`;
+    const url = `/api/antarctic/datos/${queryPath}?${queryParams}`;
     try {
         const response = await fetch(url);
         const json = await response.json();
@@ -626,6 +737,9 @@ rangeButtons.forEach((btn) => {
 stationSelect.addEventListener('change', async () => {
     await fetchLatestAvailability();
 });
+provinceSelect.addEventListener('change', () => {
+    applyStationFilters();
+});
 stationSearchInput.addEventListener('input', () => {
     renderStationCatalog(stationSearchInput.value);
 });
@@ -637,6 +751,8 @@ stationCatalogBody.addEventListener('click', async (event) => {
     const station = button.dataset.queryStation;
     if (!station)
         return;
+    syncProvinceWithStation(station);
+    applyStationFilters(false);
     stationSelect.value = station;
     await fetchLatestAvailability();
     statusEl.textContent = `Selected query station: ${stationSelect.options[stationSelect.selectedIndex]?.text ?? station}.`;

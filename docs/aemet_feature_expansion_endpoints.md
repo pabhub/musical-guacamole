@@ -1,12 +1,12 @@
 # AEMET Endpoint Expansion Ideas (Feature-Oriented)
 
-This document maps additional AEMET OpenData endpoints to potential product features for `antartica-analytics`.
+This document maps additional AEMET OpenData endpoints to potential product features for `antarctic-analytics`.
 
 ## Scoring model
 
 - Value: `High` / `Medium` / `Low` (product impact)
 - Effort: `S` / `M` / `L` (implementation complexity)
-- Fit: `Direct` (Antarctica core) or `Context` (adjacent decision support)
+- Fit: `Direct` (Antarctic core) or `Context` (adjacent decision support)
 
 ## 1) Direct-fit expansions
 
@@ -25,7 +25,7 @@ This document maps additional AEMET OpenData endpoints to potential product feat
 
 - Endpoints:
   - `GET /api/valores/climatologicos/valoresextremos/parametro/{parametro}/estacion/{idema}`
-  - `GET /api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
+  - `GET /api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
 - Feature:
   - Detect when current values approach station historical extremes.
   - “Record watch” widget in dashboard.
@@ -90,7 +90,7 @@ This document maps additional AEMET OpenData endpoints to potential product feat
   - `GET /api/prediccion/maritima/costera/costa/{costa}`
 - Feature:
   - Logistics planning module for maritime segments.
-  - Combine with Antarctica station windows for mission planning.
+  - Combine with Antarctic station windows for mission planning.
 - Value/Effort/Fit: `Medium / M / Context`
 
 ## 3) Longer-horizon ideas
@@ -126,8 +126,8 @@ This document maps additional AEMET OpenData endpoints to potential product feat
 ## 5) Risks / caveats
 
 - Geographic scope mismatch:
-  - Some endpoints are Spain-focused and may not directly cover Antarctica.
-  - Keep these as context modules, not replacements for Antarctica endpoint.
+  - Some endpoints are Spain-focused and may not directly cover Antarctic.
+  - Keep these as context modules, not replacements for Antarctic endpoint.
 - Data cadence variance:
   - Different products update at different rates; communicate freshness in UI.
 - API contract quirks:

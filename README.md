@@ -1,8 +1,8 @@
-# GS Inima Challenge – AEMET Antarctica Service
+# GS Inima Challenge – AEMET Antarctic Service
 
 This repository contains a complete solution for the three parts of the challenge:
 
-- **Part 1:** FastAPI service to query Antarctica weather station time series from AEMET.
+- **Part 1:** FastAPI service to query Antarctic weather station time series from AEMET.
 - **Part 2:** SQLite cache to reduce pressure on AEMET API + structured logging.
 - **Part 3:** Lightweight TypeScript front-end to query and view data quickly.
 
@@ -18,15 +18,15 @@ This repository contains a complete solution for the three parts of the challeng
 
 ## API endpoint
 
-`GET /api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
+`GET /api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
 
 ### Path params
 
 - `fechaIniStr`: `YYYY-MM-DDTHH:MM:SS`
 - `fechaFinStr`: `YYYY-MM-DDTHH:MM:SS`
-- `identificacion`:
-  - `gabriel-de-castilla`
-  - `juan-carlos-i`
+- `identificacion`: station identifier. Supports:
+  - slugs: `gabriel-de-castilla`, `juan-carlos-i`
+  - direct AEMET station IDs from station catalog (e.g. `89064`, `89070`)
 
 ### Query params
 
@@ -44,7 +44,7 @@ This repository contains a complete solution for the three parts of the challeng
 
 ### Export endpoint
 
-`GET /api/antartida/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
+`GET /api/antarctic/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
 
 Uses the same query parameters as the main data endpoint (`location`, `aggregation`, `types`) plus:
 
@@ -72,6 +72,8 @@ This project now exposes a helper endpoint to document what is currently returne
 - `GET /api/metadata/available-data`
 - `GET /api/metadata/latest-availability/station/{identificacion}`
 - `GET /api/metadata/stations` (AEMET station catalog cached in DB)
+  - optional query param: `force_refresh=true` to bypass cache and refresh from AEMET immediately
+  - response includes: `checked_at_utc`, `cached_until_utc`, `cache_hit`, `data`
 
 > Note: exact field availability can vary by station and period in the source API.
 
@@ -108,7 +110,63 @@ AEMET_API_KEY=your_real_key_here
 
 The backend now loads `.env` automatically (current working directory first, then project root).
 
-## Run backend
+## One-command setup
+
+```bash
+bash scripts/setup.sh
+```
+
+What it does:
+
+- creates `.venv` if missing
+- installs backend dependencies
+- installs frontend dependencies
+- builds `frontend/dist`
+- warns if `.env` or `AEMET_API_KEY` is missing
+
+Useful options:
+
+```bash
+bash scripts/setup.sh --run-tests
+bash scripts/setup.sh --backend-only
+bash scripts/setup.sh --frontend-only
+bash scripts/setup.sh --strict-env
+```
+
+## One-command local run (backend + frontend)
+
+```bash
+bash scripts/up_local.sh
+```
+
+This command:
+
+- runs setup (backend deps + frontend deps + frontend build)
+- validates `.env` + `AEMET_API_KEY` (strict mode by default)
+- starts FastAPI with `--reload`
+
+Useful options:
+
+```bash
+bash scripts/up_local.sh --no-strict-env
+bash scripts/up_local.sh --no-reload
+bash scripts/up_local.sh --host 0.0.0.0 --port 8000
+```
+
+## Run backend (local dev)
+
+```bash
+bash scripts/start.sh --reload
+```
+
+Useful options:
+
+```bash
+bash scripts/start.sh --host 127.0.0.1 --port 8000 --reload
+bash scripts/start.sh --strict-env
+```
+
+## Manual backend run (equivalent)
 
 ```bash
 python -m venv .venv
@@ -144,16 +202,42 @@ It now also includes chart visualizations and UX upgrades for date/time handling
 - Improved chart readability (smoother lines, gradient area fill, cleaner tooltips/legends)
 - One-click export actions (CSV/Parquet) from the current query window
 - Improved empty/error states (no-data table rows, chart placeholders, map guidance banners)
+- Searchable station catalog panel backed by `/api/metadata/stations`
+- Station dropdown populated from catalog with placeholder `Select station`
+- Station map markers for all catalog stations; clicking a marker selects that station in dropdown
 
 ### Frontend production build pipeline
 
 A reproducible frontend build pipeline is included:
 
 ```bash
+npm --prefix frontend install
 bash scripts/build_frontend.sh
 ```
 
 This compiles `frontend/src/app.ts` with `tsc` and outputs production-ready static assets (`app.js`, `index.html`, `style.css`) under `frontend/dist/`.
+
+## Deployment notes
+
+### Generic server deployment (backend + frontend)
+
+Use setup + strict startup:
+
+```bash
+bash scripts/setup.sh --strict-env
+bash scripts/start.sh --strict-env --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+### Netlify (frontend-only hosting)
+
+Netlify can host `frontend/dist` as static assets. It does not run the FastAPI backend process.
+
+- Build command:
+  - `bash scripts/setup.sh --frontend-only`
+- Publish directory:
+  - `frontend/dist`
+
+For full app deployment, host backend separately (e.g., Render/Fly.io/Railway/VM) and route frontend API calls to that backend.
 
 ## AEMET API limits investigation
 

@@ -1,6 +1,6 @@
 # AEMET OpenData: Relevant Documentation Map
 
-This document summarizes the official AEMET OpenData documentation and maps the available API domains/endpoints, with focus on what matters for `antartica-analytics`.
+This document summarizes the official AEMET OpenData documentation and maps the available API domains/endpoints, with focus on what matters for `antarctic-analytics`.
 
 ## 1. How the API works (important for our backend)
 
@@ -161,17 +161,17 @@ Below is the practical mapping of endpoint families visible in the official Open
   - `valores/climatologicos/inventarioestaciones/todasestaciones`
   - `valores/climatologicos/inventarioestaciones/estaciones/{estaciones}`
 
-### 4.15 Antártida (our core domain)
+### 4.15 Antarctic (our core domain)
 
-- Antarctica station observations:
+- Antarctic station observations:
   - `antartida/datos/fechaini/{...}/fechafin/{...}/estacion/{idema}`
   - examples in official docs include `89064` (Gabriel de Castilla) and `89070` (Juan Carlos I)
-- Radiometric Antarctica products:
+- Radiometric Antarctic products:
   - `antartida/datos/radiometros/fechaini/{...}/fechafin/{...}/estacion/{idema}`
   - documented example station includes `9495X`
-- Frequency noted in official docs for Antarctica dataset: annual.
+- Frequency noted in official docs for Antarctic dataset: annual.
 
-## 5. What is most relevant for `antartica-analytics`
+## 5. What is most relevant for `antarctic-analytics`
 
 Primary:
 - `antartida/datos/...` (already integrated)

@@ -28,7 +28,7 @@ This file is generated from the official AEMET OpenAPI specification:
 
 | Method | Path | Operation ID | Summary |
 |---|---|---|---|
-| `GET` | `/api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}` | `Datos Antártida.` | Datos Antártida. |
+| `GET` | `/api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}` | `Datos Antarctic.` | Datos Antarctic. |
 
 ## avisos_cap
 

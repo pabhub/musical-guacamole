@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AEMET Antarctica Analytics</title>
+    <title>AEMET Antarctic Analytics</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <div class="top-nav-wrap">
       <nav class="top-nav" aria-label="Main navigation">
-        <div class="top-nav-brand">AEMET Antarctica Analytics</div>
+        <div class="top-nav-brand">AEMET Antarctic Analytics</div>
         <div class="top-nav-links">
           <a class="top-nav-link active" href="/">Dashboard</a>
           <a class="top-nav-link" href="/config">Config</a>
@@ -20,10 +20,10 @@
     <main class="container">
       <header class="hero glass">
         <div>
-          <h1>AEMET Antarctica Analytics</h1>
+          <h1>AEMET Antarctic Analytics</h1>
           <p>Mission-ready dashboard for wind and weather exploration with map overlays, timeline playback, and high-clarity charts.</p>
         </div>
-        <div class="hero-badge">Antarctica · Wind Focus</div>
+        <div class="hero-badge">Antarctic · Wind Focus</div>
       </header>
 
       <section class="layout">
@@ -65,10 +65,14 @@
               <span id="input-timezone-value">Loading…</span>
               <a class="config-link" href="/config">Open config</a>
             </div>
+            <label>Province
+              <select id="province-select">
+                <option value="ANTARCTIC">Antarctic</option>
+              </select>
+            </label>
             <label>Station
               <select id="station">
-                <option value="gabriel-de-castilla">Meteo Station Gabriel de Castilla</option>
-                <option value="juan-carlos-i">Meteo Station Juan Carlos I</option>
+                <option value="">Select station</option>
               </select>
             </label>
             <label>Aggregation
