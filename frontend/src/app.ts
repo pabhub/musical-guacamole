@@ -25,7 +25,7 @@ const speedChartCanvas = document.getElementById('speed-chart') as HTMLCanvasEle
 const weatherChartCanvas = document.getElementById('weather-chart') as HTMLCanvasElement;
 const startInput = document.getElementById('start') as HTMLInputElement;
 const endInput = document.getElementById('end') as HTMLInputElement;
-const locationSelect = document.getElementById('location') as HTMLSelectElement;
+const inputTimezoneValue = document.getElementById('input-timezone-value') as HTMLSpanElement;
 const displayTimezoneSelect = document.getElementById('display-timezone') as HTMLSelectElement;
 const rangeButtons = Array.from(document.querySelectorAll('.range-btn')) as HTMLButtonElement[];
 const loadingOverlay = document.getElementById('loading-overlay') as HTMLDivElement;
@@ -57,6 +57,32 @@ let weatherChart: any = null;
 let activeRows: DataRow[] = [];
 let lastQueryBasePath = '';
 let lastQueryParams = '';
+const inputTimezoneStorageKey = 'aemet.input_timezone';
+
+function browserTimeZone(): string {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return zone && zone.trim() ? zone : 'UTC';
+}
+
+function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function configuredInputTimeZone(): string {
+  const stored = localStorage.getItem(inputTimezoneStorageKey)?.trim();
+  if (stored && isValidTimeZone(stored)) return stored;
+  const browser = browserTimeZone();
+  return isValidTimeZone(browser) ? browser : 'UTC';
+}
+
+function refreshInputTimeZoneLabel(): void {
+  inputTimezoneValue.textContent = configuredInputTimeZone();
+}
 
 function setLoading(loading: boolean): void {
   loadingOverlay.classList.toggle('hidden', !loading);
@@ -466,7 +492,7 @@ async function runQuery(): Promise<void> {
   const start = toApiDateTime(startInput.value);
   const end = toApiDateTime(endInput.value);
   const station = (document.getElementById('station') as HTMLSelectElement).value;
-  const location = locationSelect.value;
+  const location = configuredInputTimeZone();
   const aggregation = (document.getElementById('aggregation') as HTMLSelectElement).value;
 
   if (!start || !end) {
@@ -560,7 +586,7 @@ form.addEventListener('submit', async (event) => {
 });
 
 setDefaultRange();
-locationSelect.value = 'UTC';
+refreshInputTimeZoneLabel();
 displayTimezoneSelect.value = 'Europe/Madrid';
 renderMetrics([]);
 renderTable([]);
@@ -568,6 +594,10 @@ renderAverages([]);
 renderCharts([]);
 setEmptyState(true, 'Run a query to load weather records and map overlays.');
 playButton.disabled = true;
+
+window.addEventListener('storage', (event) => {
+  if (event.key === inputTimezoneStorageKey) refreshInputTimeZoneLabel();
+});
 
 exportCsvBtn.addEventListener('click', async () => {
   await downloadExport('csv');

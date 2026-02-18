@@ -71,6 +71,14 @@ def index() -> FileResponse:
     return FileResponse(html_path)
 
 
+@app.get("/config")
+def config_page() -> FileResponse:
+    html_path = frontend_dist / "config.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Config page not built yet")
+    return FileResponse(html_path)
+
+
 @app.get("/api/metadata/available-data", response_model=AvailableDataResponse)
 def available_data() -> AvailableDataResponse:
     return AvailableDataResponse(

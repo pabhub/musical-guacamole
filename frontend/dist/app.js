@@ -11,7 +11,7 @@ const speedChartCanvas = document.getElementById('speed-chart');
 const weatherChartCanvas = document.getElementById('weather-chart');
 const startInput = document.getElementById('start');
 const endInput = document.getElementById('end');
-const locationSelect = document.getElementById('location');
+const inputTimezoneValue = document.getElementById('input-timezone-value');
 const displayTimezoneSelect = document.getElementById('display-timezone');
 const rangeButtons = Array.from(document.querySelectorAll('.range-btn'));
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -40,6 +40,30 @@ let weatherChart = null;
 let activeRows = [];
 let lastQueryBasePath = '';
 let lastQueryParams = '';
+const inputTimezoneStorageKey = 'aemet.input_timezone';
+function browserTimeZone() {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return zone && zone.trim() ? zone : 'UTC';
+}
+function isValidTimeZone(zone) {
+    try {
+        new Intl.DateTimeFormat(undefined, { timeZone: zone });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function configuredInputTimeZone() {
+    const stored = localStorage.getItem(inputTimezoneStorageKey)?.trim();
+    if (stored && isValidTimeZone(stored))
+        return stored;
+    const browser = browserTimeZone();
+    return isValidTimeZone(browser) ? browser : 'UTC';
+}
+function refreshInputTimeZoneLabel() {
+    inputTimezoneValue.textContent = configuredInputTimeZone();
+}
 function setLoading(loading) {
     loadingOverlay.classList.toggle('hidden', !loading);
     submitBtn.disabled = loading;
@@ -407,7 +431,7 @@ async function runQuery() {
     const start = toApiDateTime(startInput.value);
     const end = toApiDateTime(endInput.value);
     const station = document.getElementById('station').value;
-    const location = locationSelect.value;
+    const location = configuredInputTimeZone();
     const aggregation = document.getElementById('aggregation').value;
     if (!start || !end) {
         statusEl.textContent = 'Please choose valid start/end datetimes.';
@@ -498,7 +522,7 @@ form.addEventListener('submit', async (event) => {
     await runQuery();
 });
 setDefaultRange();
-locationSelect.value = 'UTC';
+refreshInputTimeZoneLabel();
 displayTimezoneSelect.value = 'Europe/Madrid';
 renderMetrics([]);
 renderTable([]);
@@ -506,6 +530,10 @@ renderAverages([]);
 renderCharts([]);
 setEmptyState(true, 'Run a query to load weather records and map overlays.');
 playButton.disabled = true;
+window.addEventListener('storage', (event) => {
+    if (event.key === inputTimezoneStorageKey)
+        refreshInputTimeZoneLabel();
+});
 exportCsvBtn.addEventListener('click', async () => {
     await downloadExport('csv');
 });

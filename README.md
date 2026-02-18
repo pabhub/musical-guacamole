@@ -97,6 +97,9 @@ Open:
 
 - Swagger: `http://127.0.0.1:8000/docs`
 - UI: `http://127.0.0.1:8000/`
+- Config page: `http://127.0.0.1:8000/config`
+
+Input timezone is now configured on the config page and persisted in the browser. If no custom timezone is saved, the app defaults to the user's browser timezone.
 
 ## Front-end notes
 

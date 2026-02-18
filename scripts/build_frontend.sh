@@ -10,4 +10,5 @@ mkdir -p "$DIST_DIR"
 cd "$FRONTEND_DIR"
 tsc --project tsconfig.json
 cp "$FRONTEND_DIR/src/index.html" "$DIST_DIR/index.html"
+cp "$FRONTEND_DIR/src/config.html" "$DIST_DIR/config.html"
 cp "$FRONTEND_DIR/src/style.css" "$DIST_DIR/style.css"
