@@ -20,7 +20,12 @@ OSM_COPYRIGHT_NOTICE = "OpenStreetMap contributors"
 OSM_COPYRIGHT_URL = "https://www.openstreetmap.org/copyright"
 
 project_root = Path(__file__).resolve().parents[3]
-frontend_dist = project_root / "frontend" / "dist"
+src_root = Path(__file__).resolve().parents[2]
+frontend_dist_candidates = [
+    project_root / "frontend" / "dist",
+    src_root / "frontend" / "dist",
+]
+frontend_dist = next((path for path in frontend_dist_candidates if path.exists()), frontend_dist_candidates[0])
 http_bearer = HTTPBearer(auto_error=False)
 
 

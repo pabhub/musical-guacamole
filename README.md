@@ -328,6 +328,14 @@ This repository ships with:
   - `includeFiles: frontend/dist/**` for `api/index.py` bundle.
   - route rewrite of all paths to `api/index.py`.
 
+If your Vercel project uses `Root Directory = src`, this repo also includes:
+
+- `src/api/index.py`
+- `src/scripts/vercel_build.sh`
+- `src/vercel.json`
+
+to provide the same behavior from the `src` root.
+
 The build script installs frontend deps and creates `frontend/dist/` on each deployment, so `/`, `/login`, and `/config` can be served without committing `frontend/dist`.
 
 ## Tests
