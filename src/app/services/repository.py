@@ -283,11 +283,11 @@ class SQLiteRepository:
                 _log_seed("Tables not found, running DDL...")
                 self._turso.batch_execute(self._DDL_STATEMENTS)
 
-            # Migrate: strip +00:00 timezone suffixes from stored timestamps
-            # so that string comparisons in WHERE clauses work correctly.
-            # This is idempotent (REPLACE on clean data is a no-op).
+            # Migrate: remove old fetch_window rows that have +00:00 timezone suffixes.
+            # UPDATE REPLACE fails due to PRIMARY KEY conflict when clean rows already exist.
+            # Deleting is safe: measurements are preserved, and windows get recreated on next access.
             self._turso.batch_execute([
-                "UPDATE fetch_windows SET start_utc = REPLACE(start_utc, '+00:00', ''), end_utc = REPLACE(end_utc, '+00:00', '') WHERE start_utc LIKE '%+00:00' OR end_utc LIKE '%+00:00'",
+                "DELETE FROM fetch_windows WHERE start_utc LIKE '%+00:00' OR end_utc LIKE '%+00:00'",
                 "UPDATE measurements SET measured_at_utc = REPLACE(measured_at_utc, '+00:00', '') WHERE measured_at_utc LIKE '%+00:00'",
             ])
             _log_seed("Timestamp migration complete.")
