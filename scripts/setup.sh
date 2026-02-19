@@ -102,7 +102,7 @@ if [[ "$INSTALL_BACKEND" -eq 1 ]]; then
   # shellcheck disable=SC1091
   source "$VENV_DIR/bin/activate"
   python -m pip install --upgrade pip
-  pip install -e '.[dev]'
+  pip install -e '.[dev,parquet]'
 fi
 
 if [[ "$INSTALL_FRONTEND" -eq 1 ]]; then

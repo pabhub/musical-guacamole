@@ -145,7 +145,10 @@ def _build_parquet(data: list[OutputMeasurement]) -> bytes:
     except ImportError as exc:
         raise HTTPException(
             status_code=501,
-            detail="Parquet export requires pandas/pyarrow. Install optional dependencies to enable it.",
+            detail=(
+                "Parquet export requires pandas/pyarrow. "
+                "Install them with: pip install -e '.[parquet]'"
+            ),
         ) from exc
 
     rows: list[dict[str, object]] = []

@@ -2,8 +2,8 @@ export function complianceFooterTemplate(): string {
   return `
     <footer class="app-footer">
       <div class="app-footer-inner">
-        <p>© AEMET · Fuente: AEMET</p>
-        <p>Información elaborada utilizando, entre otras, la obtenida de la Agencia Estatal de Meteorología.</p>
+        <p>© AEMET · Source: AEMET</p>
+        <p>Information provided by the Agencia Estatal de Meteorología (AEMET) · © AEMET.</p>
         <p>Base map data: © OpenStreetMap contributors (ODbL).</p>
         <p class="legal-links">
           <a href="https://www.aemet.es/en/nota_legal" target="_blank" rel="noopener noreferrer">AEMET legal notice</a>

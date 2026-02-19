@@ -129,6 +129,7 @@ export async function runAnalysisJob(ctx: DashboardActionsContext): Promise<void
     ctx.setError("Unable to compute baseline date range for this station.");
     return;
   }
+  ctx.playbackManager.syncStepOptionsForRange(ctx.state.baselineStartLocal, ctx.state.baselineEndLocal);
 
   const payloadBody: Record<string, unknown> = {
     station,
@@ -159,6 +160,7 @@ export async function runAnalysisJob(ctx: DashboardActionsContext): Promise<void
     ctx.state.lastLoadedStationId = snapshot.selectedStationId;
     ctx.state.lastLoadedHistoryYears = historyYears;
     ctx.state.baselineEndLocal = toDateTimeLocalInZone(new Date(snapshot.effectiveEnd), ctx.configuredInputTimeZone());
+    ctx.playbackManager.syncStepOptionsForRange(ctx.state.baselineStartLocal, ctx.state.baselineEndLocal);
     const selected = snapshot.stations.find((stationItem) => stationItem.stationId === snapshot.selectedStationId);
     const hasSelectedRows = (selected?.data.length ?? 0) > 0;
     if (!hasSelectedRows) {

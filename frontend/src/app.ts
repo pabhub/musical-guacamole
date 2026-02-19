@@ -241,6 +241,7 @@ const playbackManager = new PlaybackManager({
     playbackProgressWrap: dom.playbackProgressWrap,
     playbackPlayBtn: dom.playbackPlayBtn,
     playbackSlider: dom.playbackSlider,
+    playbackStepSelect: dom.playbackStepSelect,
     playbackStatusEl: dom.playbackStatusEl,
     overlayTempInput: dom.overlayTempInput,
     overlayPressureInput: dom.overlayPressureInput,

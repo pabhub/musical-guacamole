@@ -221,6 +221,9 @@ LOG_LEVEL=INFO
 bash scripts/setup.sh
 ```
 
+`scripts/setup.sh` installs dev + parquet extras (`pandas`, `pyarrow`) so Parquet export works out of the box.
+
+
 3. Activate virtualenv (required in every new terminal if running commands manually):
 
 ```bash

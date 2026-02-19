@@ -19,7 +19,45 @@ function sanitizeFileToken(value: string): string {
   return normalized || "antarctic-station";
 }
 
+function captureHeatmapMetricsForPdf(reportCard: HTMLElement): string[][] {
+  const sourceShells = Array.from(reportCard.querySelectorAll<HTMLElement>(".comparison-heatmap-shell"));
+  const capturedByShell: string[][] = [];
+
+  for (const shell of sourceShells) {
+    const tabButtons = Array.from(shell.querySelectorAll<HTMLButtonElement>(".comparison-tab"));
+    const heatmapGrid = shell.querySelector<HTMLElement>("[data-role='heatmap-grid']");
+    if (!tabButtons.length || !heatmapGrid) {
+      capturedByShell.push([]);
+      continue;
+    }
+
+    const activeButton = shell.querySelector<HTMLButtonElement>(".comparison-tab.active");
+    const capturedBlocks: string[] = [];
+    for (const tabButton of tabButtons) {
+      tabButton.click();
+      const metricLabel = tabButton.textContent?.trim() || "Metric";
+      const heatmapHtml = heatmapGrid.innerHTML.trim();
+      if (!heatmapHtml) continue;
+      capturedBlocks.push(`
+        <section class="pdf-metric-heatmap">
+          <h6>${escapeHtml(metricLabel)}</h6>
+          ${heatmapHtml}
+        </section>
+      `);
+    }
+
+    if (activeButton && !activeButton.classList.contains("active")) {
+      activeButton.click();
+    }
+
+    capturedByShell.push(capturedBlocks);
+  }
+
+  return capturedByShell;
+}
+
 function cloneReportCardForPdf(reportCard: HTMLElement): HTMLElement {
+  const capturedHeatmaps = captureHeatmapMetricsForPdf(reportCard);
   const clone = reportCard.cloneNode(true) as HTMLElement;
   clone.id = "pdf-analysis-report";
   clone.classList.remove("hidden");
@@ -32,6 +70,34 @@ function cloneReportCardForPdf(reportCard: HTMLElement): HTMLElement {
   clone.querySelectorAll("details").forEach((node) => {
     node.setAttribute("open", "open");
   });
+
+  clone.querySelectorAll<HTMLElement>(".timeframe-controls").forEach((controls) => {
+    const text = document.createElement("p");
+    text.className = "pdf-timeframe-mode";
+    text.textContent = "Comparison by: Month";
+    controls.replaceWith(text);
+  });
+
+  const cloneShells = Array.from(clone.querySelectorAll<HTMLElement>(".comparison-heatmap-shell"));
+  cloneShells.forEach((shell, index) => {
+    const headTitle =
+      shell.querySelector(".comparison-heatmap-head h5")?.textContent?.trim() || "Period vs year heatmap";
+    const metricBlocks = capturedHeatmaps[index] ?? [];
+    if (!metricBlocks.length) {
+      shell.remove();
+      return;
+    }
+    shell.innerHTML = `
+      <div class="comparison-heatmap-head">
+        <h5>${escapeHtml(headTitle)}</h5>
+      </div>
+      <div class="pdf-heatmap-stack">
+        ${metricBlocks.join("")}
+      </div>
+    `;
+  });
+  clone.querySelectorAll(".comparison-cell-detail").forEach((node) => node.remove());
+  clone.querySelectorAll(".comparison-tab-list").forEach((node) => node.remove());
 
   const sourceCanvases = Array.from(reportCard.querySelectorAll<HTMLCanvasElement>("canvas[id]"));
   for (const sourceCanvas of sourceCanvases) {
@@ -274,18 +340,49 @@ function renderPdfDocument(params: {
     }
     #pdf-analysis-report .comparison-year-summary-wrap {
       margin-top: 7px;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+    #pdf-analysis-report .pdf-timeframe-mode {
+      margin: 7px 0 0;
+      font-size: 11px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    #pdf-analysis-report .pdf-heatmap-stack {
+      margin-top: 6px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    #pdf-analysis-report .pdf-metric-heatmap {
+      border: 1px solid #d2dfed;
+      border-radius: 8px;
+      padding: 7px;
+      background: #fff;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+    }
+    #pdf-analysis-report .pdf-metric-heatmap h6 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      color: #0f172a;
     }
     #pdf-analysis-report .table-wrap {
       border: 1px solid #d2dfed;
       border-radius: 8px;
       overflow: visible;
       max-height: none;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
     }
     #pdf-analysis-report table {
       width: 100%;
       table-layout: fixed;
       border-collapse: collapse;
-      font-size: 10px;
+      font-size: 9px;
+      break-inside: avoid-page;
+      page-break-inside: avoid;
     }
     #pdf-analysis-report th,
     #pdf-analysis-report td {
@@ -337,7 +434,9 @@ function renderPdfDocument(params: {
       body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .pdf-head, #pdf-analysis-report, #pdf-analysis-report .analysis-block,
       #pdf-analysis-report .metric-card, #pdf-analysis-report .decision-tile,
-      #pdf-analysis-report .comparison-kpi, #pdf-analysis-report .comparison-decision-tile {
+      #pdf-analysis-report .comparison-kpi, #pdf-analysis-report .comparison-decision-tile,
+      #pdf-analysis-report .comparison-year-summary-wrap, #pdf-analysis-report .pdf-metric-heatmap,
+      #pdf-analysis-report .table-wrap, #pdf-analysis-report table {
         break-inside: avoid;
         page-break-inside: avoid;
       }
@@ -370,7 +469,7 @@ function renderPdfDocument(params: {
           <h4>Data sources</h4>
           <ul>
             <li>Fuente: AEMET (© AEMET)</li>
-            <li>Información elaborada utilizando, entre otras, la obtenida de la Agencia Estatal de Meteorología.</li>
+            <li>Information created using meteorology reports obtained from the Agencia Estatal de Meteorología, among others.</li>
             <li>Base map data: © OpenStreetMap contributors (ODbL)</li>
             <li>Antarctic stations in scope: ${escapeHtml(availableStations)}</li>
           </ul>
@@ -388,7 +487,7 @@ function renderPdfDocument(params: {
 
     <footer class="pdf-sources">
       <p>Report scope: Antarctic wind feasibility screening (GS Inima internal use).</p>
-      <p>Attribution: Información elaborada por la Agencia Estatal de Meteorología (AEMET) · Fuente: AEMET · © AEMET.</p>
+      <p>Attribution: Information provided by the Agencia Estatal de Meteorología (AEMET) · Source: AEMET · © AEMET.</p>
     </footer>
   </main>
   <script>
@@ -459,11 +558,7 @@ export async function downloadAnalysisPdf(ctx: DashboardActionsContext): Promise
       return;
     }
 
-    const groupingElement = document.getElementById("timeframe-grouping");
-    const groupingLabel =
-      groupingElement instanceof HTMLSelectElement && groupingElement.value === "season"
-        ? "Season"
-        : "Month";
+    const groupingLabel = "Month";
     const timezone = ctx.configuredInputTimeZone();
     const generatedAtIso = new Date().toISOString();
     const generatedAtLabel = formatDateTime(generatedAtIso, timezone);

@@ -13,6 +13,7 @@ type PlaybackElements = {
   playbackProgressWrap: HTMLDivElement;
   playbackPlayBtn: HTMLButtonElement;
   playbackSlider: HTMLInputElement;
+  playbackStepSelect: HTMLSelectElement;
   playbackStatusEl: HTMLParagraphElement;
   overlayTempInput: HTMLInputElement;
   overlayPressureInput: HTMLInputElement;
@@ -40,6 +41,36 @@ type PlaybackManagerDeps = {
 
 export class PlaybackManager {
   constructor(private readonly deps: PlaybackManagerDeps) {}
+
+  private readonly playbackStepOptions = [
+    { value: "10m", label: "10m", stepMs: 10 * 60 * 1000 },
+    { value: "1h", label: "1h", stepMs: 60 * 60 * 1000 },
+    { value: "3h", label: "3h", stepMs: 3 * 60 * 60 * 1000 },
+    { value: "1d", label: "1d", stepMs: 24 * 60 * 60 * 1000 },
+  ] as const;
+
+  private static readonly MAX_PLAYBACK_FRAMES_FOR_STEP = 1500;
+
+  syncStepOptionsForRange(startLocalIso: string, endLocalIso: string): void {
+    const start = new Date(startLocalIso);
+    const end = new Date(endLocalIso);
+    const durationMs = end.getTime() - start.getTime();
+    const hasValidRange = Number.isFinite(durationMs) && durationMs > 0;
+
+    const allowed = this.playbackStepOptions.filter((option) => {
+      if (option.value === "1d") return true;
+      if (!hasValidRange) return false;
+      const frameCount = Math.floor(durationMs / option.stepMs) + 1;
+      return frameCount <= PlaybackManager.MAX_PLAYBACK_FRAMES_FOR_STEP;
+    });
+    const safeAllowed = allowed.length ? allowed : [this.playbackStepOptions[this.playbackStepOptions.length - 1]];
+
+    const stepSelect = this.deps.elements.playbackStepSelect;
+    const previous = stepSelect.value;
+    stepSelect.innerHTML = safeAllowed.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
+    const preferred = safeAllowed.some((option) => option.value === previous) ? previous : safeAllowed[0].value;
+    stepSelect.value = preferred;
+  }
 
   configureEvents(): void {
     this.deps.playbackController.onFrame((frame, index, total) => {
