@@ -89,7 +89,18 @@ class FakeService:
             ],
         }
 
-    def create_query_job(self, station, start_local, timezone_input, playback_step, aggregation, selected_types, history_start_local):
+    def create_query_job(
+        self,
+        station,
+        start_local,
+        end_local,
+        timezone_input,
+        playback_step,
+        aggregation,
+        selected_types,
+        history_start_local,
+    ):
+        _ = end_local
         return {
             "jobId": "job_123",
             "status": "pending",

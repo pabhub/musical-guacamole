@@ -79,6 +79,9 @@ def create_query_job(
 ) -> QueryJobCreatedResponse:
     tz = parse_timezone_or_400(payload.location)
     start = coerce_datetime_to_timezone(payload.start, tz)
+    end = None
+    if payload.end is not None:
+        end = coerce_datetime_to_timezone(payload.end, tz)
 
     history_start = payload.history_start
     if history_start is not None:
@@ -102,6 +105,7 @@ def create_query_job(
         lambda: service.create_query_job(
             station=payload.station,
             start_local=start,
+            end_local=end,
             timezone_input=payload.location,
             playback_step=payload.playback_step,
             aggregation=payload.aggregation,

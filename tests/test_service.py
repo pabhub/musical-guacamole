@@ -1038,6 +1038,7 @@ def test_create_query_job_returns_cached_ready_when_window_already_available():
     out = service.create_query_job(
         station="1",
         start_local=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+        end_local=None,
         timezone_input="UTC",
         playback_step=PlaybackStep.HOURLY,
         aggregation=TimeAggregation.HOURLY,
@@ -1045,3 +1046,33 @@ def test_create_query_job_returns_cached_ready_when_window_already_available():
     )
     assert out.playback_ready is True
     assert out.total_api_calls_planned == 0
+
+
+def test_create_query_job_uses_client_end_without_latest_probe():
+    rows = [
+        SourceMeasurement(
+            station_name="Station A",
+            measured_at_utc=datetime(2024, 1, 15, 0, 0, tzinfo=UTC),
+            speed_mps=5.0,
+            direction_deg=200.0,
+        )
+    ]
+    service, repo, _ = build_service(rows, has_fresh_cache=True)
+    repo.latest_measurement = None
+
+    def _raise_if_called(*_args, **_kwargs):
+        raise AssertionError("latest availability probe should not run when end_local is provided")
+
+    service.get_latest_availability = _raise_if_called
+
+    out = service.create_query_job(
+        station="1",
+        start_local=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+        end_local=datetime(2024, 1, 31, 0, 0, tzinfo=UTC),
+        timezone_input="UTC",
+        playback_step=PlaybackStep.HOURLY,
+        aggregation=TimeAggregation.HOURLY,
+        selected_types=[],
+    )
+    assert out.playback_ready is True
+    assert out.total_windows == 1

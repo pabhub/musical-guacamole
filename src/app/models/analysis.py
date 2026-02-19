@@ -161,6 +161,13 @@ class WindFarmSimulationParams(BaseModel):
 class QueryJobCreateRequest(BaseModel):
     station: str = Field(description="Station identifier. Supported selectable IDs: 89064, 89070.")
     start: datetime = Field(description="Start datetime for analysis in the requested input timezone.")
+    end: datetime | None = Field(
+        default=None,
+        description=(
+            "Optional pre-resolved end datetime in the requested input timezone. "
+            "When provided by the client, backend skips latest-availability probing and uses this end directly."
+        ),
+    )
     location: str = Field(default="UTC", description="Input timezone (IANA), e.g. Europe/Madrid.")
     history_start: datetime | None = Field(
         default=None,

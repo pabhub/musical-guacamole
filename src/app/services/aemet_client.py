@@ -222,7 +222,7 @@ class AemetClient:
                 raise UpstreamServiceError(". ".join(detail_parts))
 
             logger.info("Downloading AEMET data from temporary URL")
-            data_response = self._throttled_get(client, data_url)
+            data_response = self._throttled_get(client, data_url, enforce_min_interval=False)
             try:
                 data_response.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -265,11 +265,20 @@ class AemetClient:
 
         return raw_items
 
-    def _throttled_get(self, client: httpx.Client, url: str, **kwargs: Any) -> httpx.Response:
+    def _throttled_get(
+        self,
+        client: httpx.Client,
+        url: str,
+        *,
+        enforce_min_interval: bool = True,
+        **kwargs: Any,
+    ) -> httpx.Response:
         with self.__class__._request_lock:
             now = time.monotonic()
             elapsed_since_last = now - self.__class__._last_request_monotonic
-            wait_for_min_interval = self.min_request_interval_seconds - elapsed_since_last
+            wait_for_min_interval = (
+                self.min_request_interval_seconds - elapsed_since_last if enforce_min_interval else 0.0
+            )
             wait_for_rate_limit = self.__class__._rate_limited_until_monotonic - now
             wait_for = max(wait_for_min_interval, wait_for_rate_limit)
             if wait_for > 0:

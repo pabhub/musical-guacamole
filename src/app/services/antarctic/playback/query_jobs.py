@@ -35,6 +35,7 @@ class PlaybackQueryJobsMixin:
         self,
         station: str,
         start_local: datetime,
+        end_local: datetime | None,
         timezone_input: str,
         playback_step: PlaybackStep,
         aggregation: TimeAggregation,
@@ -45,17 +46,18 @@ class PlaybackQueryJobsMixin:
         self._assert_station_supported_by_antarctic_endpoint(station_id)
         self._assert_station_selectable(station_id)
 
-        latest = self.get_latest_availability(station_id)
-        if latest.newest_observation_utc is None:
-            raise AppValidationError(
-                f"No recent observations are available for station '{station_id}'. Try another station later."
-            )
-
-        latest_local = latest.newest_observation_utc.astimezone(start_local.tzinfo or UTC)
-        effective_end_local = latest_local
+        if end_local is not None:
+            effective_end_local = end_local.astimezone(start_local.tzinfo or UTC)
+        else:
+            latest = self.get_latest_availability(station_id)
+            if latest.newest_observation_utc is None:
+                raise AppValidationError(
+                    f"No recent observations are available for station '{station_id}'. Try another station later."
+                )
+            effective_end_local = latest.newest_observation_utc.astimezone(start_local.tzinfo or UTC)
         if start_local >= effective_end_local:
             raise AppValidationError(
-                "Start datetime must be earlier than the latest available observation for this station."
+                "Start datetime must be earlier than the effective end datetime."
             )
 
         requested_history_start = history_start_local or start_local
