@@ -35,10 +35,18 @@ class AemetClient:
     _ROW_LONGITUDE_KEYS = ("lon", "long", "longitud", "longitude", "lng")
     _ROW_ALTITUDE_KEYS = ("alt", "altitud", "altitude")
 
-    def __init__(self, api_key: str, timeout_seconds: float = 20.0, min_request_interval_seconds: float = 2.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        timeout_seconds: float = 20.0,
+        min_request_interval_seconds: float = 2.0,
+        retry_after_cap_seconds: float | None = None,
+    ) -> None:
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self.min_request_interval_seconds = max(0.0, min_request_interval_seconds)
+        cap = retry_after_cap_seconds if retry_after_cap_seconds is not None else self.min_request_interval_seconds
+        self.retry_after_cap_seconds = max(self.min_request_interval_seconds, cap)
 
     def fetch_station_data(
         self,
@@ -299,7 +307,9 @@ class AemetClient:
             return max(self.min_request_interval_seconds, 1.0)
         if value < 1.0:
             return 1.0
-        return min(value, 600.0)
+        if value < self.min_request_interval_seconds:
+            value = self.min_request_interval_seconds
+        return min(value, self.retry_after_cap_seconds)
 
     @staticmethod
     def _parse_json_rows(payload: str) -> list[dict[str, Any]] | None:

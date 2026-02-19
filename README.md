@@ -274,8 +274,9 @@ Swagger docs:
 Rate-limit protections:
 
 - outbound spacing controlled by `AEMET_MIN_REQUEST_INTERVAL_SECONDS`
+- upstream `Retry-After` cooldown is capped by `AEMET_RETRY_AFTER_CAP_SECONDS` (set to `2` for steady pacing)
 - retries for transient upstream failures
-- adaptive backoff when 429 is returned
+- worker retries are aligned to the configured limiter interval (no long extra exponential waits)
 
 ## Feasibility and Simulation Metrics
 
@@ -314,6 +315,7 @@ Set at least:
 ```dotenv
 AEMET_API_KEY=your_key_here
 AEMET_MIN_REQUEST_INTERVAL_SECONDS=2
+AEMET_RETRY_AFTER_CAP_SECONDS=2
 API_AUTH_USERNAME=analyst
 API_AUTH_PASSWORD=change_this_password
 JWT_SECRET_KEY=change_this_secret_key

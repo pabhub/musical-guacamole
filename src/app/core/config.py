@@ -22,6 +22,7 @@ class Settings:
     jwt_access_token_ttl_seconds: int = 3600
     jwt_issuer: str = "antarctic-analytics"
     aemet_min_request_interval_seconds: float = 2.0
+    aemet_retry_after_cap_seconds: float = 2.0
 
 
 def _strip_wrapping_quotes(value: str) -> str:
@@ -71,11 +72,16 @@ def _default_database_url() -> str:
 
 def get_settings() -> Settings:
     _load_dotenv_if_present()
+    min_request_interval_seconds = float(os.getenv("AEMET_MIN_REQUEST_INTERVAL_SECONDS", "2"))
+    retry_after_cap_seconds = float(
+        os.getenv("AEMET_RETRY_AFTER_CAP_SECONDS", str(min_request_interval_seconds))
+    )
     return Settings(
         aemet_api_key=os.getenv("AEMET_API_KEY", ""),
         database_url=os.getenv("DATABASE_URL", _default_database_url()),
         request_timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "20")),
-        aemet_min_request_interval_seconds=float(os.getenv("AEMET_MIN_REQUEST_INTERVAL_SECONDS", "2")),
+        aemet_min_request_interval_seconds=min_request_interval_seconds,
+        aemet_retry_after_cap_seconds=retry_after_cap_seconds,
         gabriel_station_id=os.getenv("AEMET_GABRIEL_STATION_ID", "89070"),
         juan_station_id=os.getenv("AEMET_JUAN_STATION_ID", "89064"),
         cache_freshness_seconds=int(os.getenv("CACHE_FRESHNESS_SECONDS", str(3 * 60 * 60))),

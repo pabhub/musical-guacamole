@@ -9,9 +9,10 @@ UTC = ZoneInfo("UTC")
 
 
 class FakeResponse:
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, headers=None):
         self._payload = payload
         self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self):
         return None
@@ -35,6 +36,16 @@ class FakeHttpClient:
         response = self._responses[self._idx]
         self._idx += 1
         return response
+
+
+def test_retry_after_is_capped_to_configured_limiter_interval():
+    client = AemetClient(
+        api_key="ok-key",
+        min_request_interval_seconds=2.0,
+        retry_after_cap_seconds=2.0,
+    )
+    response = FakeResponse({}, status_code=429, headers={"Retry-After": "60"})
+    assert client._retry_after_seconds(response) == 2.0
 
 
 def test_fetch_station_data_raises_clear_error_when_metadata_has_no_datos(monkeypatch):

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
-import re
 import threading
 import time
 import uuid
@@ -217,18 +215,14 @@ class PlaybackQueryJobsMixin:
                         windows[index] = window
                         payload["windows_json"] = windows
                         limiter_seconds = max(float(getattr(self.settings, "aemet_min_request_interval_seconds", 2.0)), 0.5)
-                        if is_rate_limited:
-                            retry_after_seconds = self._parse_retry_after_seconds(detail)
-                            base_backoff = (
-                                retry_after_seconds if retry_after_seconds is not None else max(limiter_seconds * 5.0, 5.0)
-                            )
-                        else:
-                            base_backoff = max(limiter_seconds * 2.0, 2.0)
-                        sleep_seconds = min(base_backoff * (2 ** (attempts - 1)), 300.0) + random.uniform(0.0, 1.0)
+                        # Keep worker retries aligned with configured limiter. The HTTP client already
+                        # enforces cooldown after 429 responses, so we avoid adding long extra sleeps here.
+                        sleep_seconds = limiter_seconds
                         if is_rate_limited:
                             payload["message"] = (
                                 f"AEMET rate limited on window {index + 1}/{total_windows}. "
-                                f"Retry in ~{int(round(sleep_seconds))}s (attempt {attempts}/{max_attempts})."
+                                f"Retry in ~{int(round(sleep_seconds))}s using configured limiter "
+                                f"(attempt {attempts}/{max_attempts})."
                             )
                         else:
                             payload["message"] = (
@@ -322,19 +316,6 @@ class PlaybackQueryJobsMixin:
                 "Some historical windows are still loading. Values shown are based on currently cached observations."
             )
         return snapshot
-
-    @staticmethod
-    def _parse_retry_after_seconds(detail: str) -> float | None:
-        match = re.search(r"Retry-After=(\d+)s", detail)
-        if match is None:
-            return None
-        try:
-            value = float(match.group(1))
-        except ValueError:
-            return None
-        if value < 1.0:
-            return 1.0
-        return min(value, 600.0)
 
     @staticmethod
     def _is_retryable_upstream_error(detail: str) -> bool:

@@ -36,11 +36,17 @@ def _cached_repository(database_url: str) -> SQLiteRepository:
 
 
 @lru_cache(maxsize=1)
-def _cached_aemet_client(api_key: str, timeout_seconds: float, min_request_interval_seconds: float) -> AemetClient:
+def _cached_aemet_client(
+    api_key: str,
+    timeout_seconds: float,
+    min_request_interval_seconds: float,
+    retry_after_cap_seconds: float,
+) -> AemetClient:
     return AemetClient(
         api_key,
         timeout_seconds,
         min_request_interval_seconds,
+        retry_after_cap_seconds,
     )
 
 
@@ -56,6 +62,7 @@ def _cached_service(settings: Settings) -> AntarcticService:
         settings.aemet_api_key,
         settings.request_timeout_seconds,
         settings.aemet_min_request_interval_seconds,
+        settings.aemet_retry_after_cap_seconds,
     )
     return AntarcticService(settings=settings, repository=repository, aemet_client=client)
 
