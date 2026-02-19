@@ -1,15 +1,37 @@
 from __future__ import annotations
 
+import os
+import shutil
 import sqlite3
 import json
 import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 from app.models import SourceMeasurement, StationCatalogItem
 
 logger = logging.getLogger(__name__)
+
+# Candidate locations where a pre-built cache DB may be bundled into the deploy.
+_BUNDLED_DB_CANDIDATES = [
+    Path(__file__).resolve().parents[3] / "aemet_cache.db",  # project root
+    Path(__file__).resolve().parents[2] / "aemet_cache.db",  # src/
+]
+
+
+def _seed_from_bundled(target_path: str) -> None:
+    """Copy a bundled read-only cache DB to the writable target path on Vercel."""
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        return
+    if os.path.exists(target_path):
+        return
+    for candidate in _BUNDLED_DB_CANDIDATES:
+        if candidate.is_file():
+            logger.info("Seeding cache DB from bundled %s → %s", candidate, target_path)
+            shutil.copy2(str(candidate), target_path)
+            return
 
 
 class SQLiteRepository:
@@ -37,6 +59,7 @@ class SQLiteRepository:
             self.db_path = normalized_path or "aemet_cache.db"
 
         logger.info("Initializing SQLite repository path=%s", self.db_path)
+        _seed_from_bundled(self.db_path)
         try:
             self._initialize()
         except sqlite3.OperationalError as exc:
