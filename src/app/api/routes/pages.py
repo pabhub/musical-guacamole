@@ -70,6 +70,33 @@ def get_debug_logs():
             info["fetch_windows_count"] = row["cnt"] if row else 0
         except Exception as e:
             info["fetch_windows_count"] = f"error: {e}"
+        # Test reading measurements back and constructing SourceMeasurement
+        try:
+            from app.models import SourceMeasurement
+            cursor = client.execute(
+                "SELECT station_name, measured_at_utc, temperature_c, pressure_hpa, speed_mps, "
+                "direction_deg, latitude, longitude, altitude_m FROM measurements LIMIT 3"
+            )
+            test_rows = cursor.fetchall()
+            parsed = []
+            for row in test_rows:
+                sm = SourceMeasurement(
+                    station_name=row["station_name"],
+                    measured_at_utc=row["measured_at_utc"],
+                    temperature_c=row["temperature_c"],
+                    pressure_hpa=row["pressure_hpa"],
+                    speed_mps=row["speed_mps"],
+                    direction_deg=row["direction_deg"],
+                    latitude=row["latitude"],
+                    longitude=row["longitude"],
+                    altitude_m=row["altitude_m"],
+                )
+                parsed.append(sm.model_dump(mode="json"))
+            info["test_read_rows"] = len(parsed)
+            info["test_read_sample"] = parsed[0] if parsed else None
+        except Exception as e:
+            info["test_read_error"] = f"{type(e).__name__}: {e}"
+            info["test_read_traceback"] = traceback.format_exc()
         info["turso_ok"] = True
         client.close()
     except Exception as e:
