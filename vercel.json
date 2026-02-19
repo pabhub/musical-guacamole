@@ -1,4 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "bash scripts/vercel_build.sh"
+  "buildCommand": "bash scripts/vercel_build.sh",
+  "functions": {
+    "main.py": {
+      "includeFiles": "aemet_cache.db.gz"
+    }
+  }
 }
