@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bash scripts/vercel_build.sh",
+  "functions": {
+    "main.py": {
+      "includeFiles": "frontend/dist/**"
+    },
+    "src/main.py": {
+      "includeFiles": "frontend/dist/**"
+    }
+  }
+}

@@ -19,7 +19,8 @@ AEMET_LEGAL_NOTICE_URL = "https://www.aemet.es/en/nota_legal"
 OSM_COPYRIGHT_NOTICE = "OpenStreetMap contributors"
 OSM_COPYRIGHT_URL = "https://www.openstreetmap.org/copyright"
 
-frontend_dist = Path("frontend/dist")
+project_root = Path(__file__).resolve().parents[3]
+frontend_dist = project_root / "frontend" / "dist"
 http_bearer = HTTPBearer(auto_error=False)
 
 
