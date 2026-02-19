@@ -42,7 +42,10 @@ class AnalysisMixin:
     def get_analysis_bootstrap(self) -> AnalysisBootstrapResponse:
         checked_at_utc = datetime.now(UTC)
         map_station_ids = self._map_overlay_station_ids()
-        self._warm_cache_for_station_ids(map_station_ids, checked_at_utc)
+        try:
+            self._warm_cache_for_station_ids(map_station_ids, checked_at_utc)
+        except Exception as exc:  # pragma: no cover - defensive guard for bootstrap resiliency
+            logger.warning("Bootstrap warm-cache skipped due to unexpected error: %s", str(exc))
 
         profiles = self.get_station_profiles()
         selectable_station_ids = sorted([profile.station_id for profile in profiles if profile.is_selectable])

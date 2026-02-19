@@ -694,6 +694,39 @@ def test_analysis_bootstrap_exposes_two_selectable_stations_and_two_map_overlays
     assert any(item.station_id == "89064RA" for item in out.stations)
 
 
+def test_analysis_bootstrap_survives_warm_cache_failure():
+    rows = [
+        SourceMeasurement(
+            station_name="Juan Carlos I",
+            measured_at_utc=datetime(2024, 1, 10, 0, 0, tzinfo=UTC),
+            speed_mps=5.0,
+        )
+    ]
+    settings = Settings(
+        aemet_api_key="dummy",
+        database_url="sqlite:///:memory:",
+        request_timeout_seconds=1.0,
+        gabriel_station_id="89070",
+        juan_station_id="89064",
+        cache_freshness_seconds=3600,
+        station_catalog_freshness_seconds=7 * 24 * 60 * 60,
+    )
+    repo = FakeRepo(rows, has_fresh_cache=True)
+    client = FakeClient(rows)
+    service = AntarcticService(settings, repo, client)
+
+    def _raise_unexpected(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    service._warm_cache_for_station_ids = _raise_unexpected
+
+    out = service.get_analysis_bootstrap()
+
+    assert out.selectable_station_ids == ["89064", "89070"]
+    assert out.map_station_ids == ["89064", "89070"]
+    assert len(out.stations) == 4
+
+
 def test_feasibility_snapshot_rejects_non_selectable_station():
     rows = [
         SourceMeasurement(
