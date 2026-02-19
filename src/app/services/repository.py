@@ -90,6 +90,7 @@ class TursoHttpClient:
         requests.append({"type": "close"})
         resp = self._http.post("/v2/pipeline", json={"requests": requests})
         resp.raise_for_status()
+        self._check_pipeline_errors(resp.json())
 
     def batch_execute(self, statements: list[str]) -> None:
         """Execute multiple SQL statements in a single pipeline request."""
@@ -99,6 +100,14 @@ class TursoHttpClient:
         requests.append({"type": "close"})
         resp = self._http.post("/v2/pipeline", json={"requests": requests})
         resp.raise_for_status()
+        self._check_pipeline_errors(resp.json())
+
+    def _check_pipeline_errors(self, payload: dict) -> None:
+        results = payload.get("results", [])
+        for res in results:
+            if isinstance(res, dict) and res.get("type") == "error":
+                error = res.get("error", {})
+                raise RuntimeError(f"Turso error: {error.get('message', str(error))}")
 
     @staticmethod
     def _encode_arg(value):
