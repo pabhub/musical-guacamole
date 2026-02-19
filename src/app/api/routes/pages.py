@@ -33,4 +33,27 @@ from app.services.repository import seed_debug_logs
 
 @router.get("/api/analysis/debug-logs", include_in_schema=False)
 def get_debug_logs():
-    return {"logs": seed_debug_logs}
+    import os, traceback
+    from app.core.config import get_settings
+    info = {}
+    info["seed_debug_logs"] = seed_debug_logs
+    info["DATABASE_URL_set"] = bool(os.getenv("DATABASE_URL"))
+    info["DATABASE_URL_prefix"] = (os.getenv("DATABASE_URL") or "")[:40]
+    info["VERCEL"] = os.getenv("VERCEL", "")
+    info["VERCEL_ENV"] = os.getenv("VERCEL_ENV", "")
+    try:
+        settings = get_settings()
+        info["resolved_database_url_prefix"] = settings.database_url[:40]
+    except Exception as e:
+        info["settings_error"] = f"{type(e).__name__}: {e}"
+    try:
+        import libsql_client
+        client = libsql_client.create_client_sync(url=settings.database_url)
+        rs = client.execute("SELECT COUNT(*) as cnt FROM measurements")
+        info["measurement_count"] = rs.rows[0][0] if rs.rows else "no rows"
+        info["turso_ok"] = True
+        client.close()
+    except Exception as e:
+        info["turso_error"] = f"{type(e).__name__}: {e}"
+        info["turso_traceback"] = traceback.format_exc()
+    return info
