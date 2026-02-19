@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Depends, HTTPException, status
@@ -29,9 +30,29 @@ frontend_dist = next((path for path in frontend_dist_candidates if path.exists()
 http_bearer = HTTPBearer(auto_error=False)
 
 
-def get_service(settings: Settings = Depends(get_settings)) -> AntarcticService:
-    repository = SQLiteRepository(settings.database_url)
-    client = AemetClient(
+@lru_cache(maxsize=1)
+def _cached_repository(database_url: str) -> SQLiteRepository:
+    return SQLiteRepository(database_url)
+
+
+@lru_cache(maxsize=1)
+def _cached_aemet_client(api_key: str, timeout_seconds: float, min_request_interval_seconds: float) -> AemetClient:
+    return AemetClient(
+        api_key,
+        timeout_seconds,
+        min_request_interval_seconds,
+    )
+
+
+@lru_cache(maxsize=1)
+def _cached_auth_service(settings: Settings) -> AuthService:
+    return AuthService(settings=settings)
+
+
+@lru_cache(maxsize=1)
+def _cached_service(settings: Settings) -> AntarcticService:
+    repository = _cached_repository(settings.database_url)
+    client = _cached_aemet_client(
         settings.aemet_api_key,
         settings.request_timeout_seconds,
         settings.aemet_min_request_interval_seconds,
@@ -39,8 +60,12 @@ def get_service(settings: Settings = Depends(get_settings)) -> AntarcticService:
     return AntarcticService(settings=settings, repository=repository, aemet_client=client)
 
 
+def get_service(settings: Settings = Depends(get_settings)) -> AntarcticService:
+    return _cached_service(settings)
+
+
 def get_auth_service(settings: Settings = Depends(get_settings)) -> AuthService:
-    return AuthService(settings=settings)
+    return _cached_auth_service(settings)
 
 
 def require_api_user(
@@ -83,3 +108,10 @@ def compliance_headers(latest_observation_utc: str | None = None) -> dict[str, s
 def set_compliance_headers(response: Response, latest_observation_utc: str | None = None) -> None:
     for key, value in compliance_headers(latest_observation_utc=latest_observation_utc).items():
         response.headers[key] = value
+
+
+def clear_dependency_caches() -> None:
+    _cached_repository.cache_clear()
+    _cached_aemet_client.cache_clear()
+    _cached_service.cache_clear()
+    _cached_auth_service.cache_clear()

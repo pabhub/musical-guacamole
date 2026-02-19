@@ -1,6 +1,7 @@
 declare const L: any;
 
 import { clearAuthToken, hasValidAuthToken, startAuthSessionManager } from "./core/api.js";
+import { logError, logInfo } from "./core/logger.js";
 import { QueryJobCreateResponse, QueryJobStatusResponse, WindFarmParams } from "./core/types.js";
 import { redirectToLogin } from "./core/navigation.js";
 import {
@@ -18,6 +19,7 @@ import { renderDashboardPage } from "./components/dashboard/page.js";
 import {
   WorkflowStage,
   bootstrapDashboard,
+  downloadAnalysisPdf,
   downloadExport,
   handleMapStationClick,
   runAnalysisJob,
@@ -87,6 +89,7 @@ function refreshAuthBadge(): void {
 
 function setWorkflowStage(_stage: WorkflowStage, helperText?: string): void {
   if (helperText) dom.statusEl.textContent = helperText;
+  if (helperText) logInfo("dashboard", helperText);
 }
 
 function ensureAuthenticated(): boolean {
@@ -216,8 +219,6 @@ const timeframeManager = new TimeframeManager({
     timeframeGroupingSelect: dom.timeframeGroupingSelect,
     timeframeRunBtn: dom.timeframeRunBtn,
     timeframeCardsEl: dom.timeframeCardsEl,
-    timeframePeriodHeaderEl: dom.timeframePeriodHeaderEl,
-    timeframeBodyEl: dom.timeframeBodyEl,
     timeframeComparisonEl: dom.timeframeComparisonEl,
     timeframeGenerationEl: dom.timeframeGenerationEl,
   },
@@ -277,7 +278,6 @@ const actionsContext = {
     queryProgressText: dom.queryProgressText,
     playbackWindowLabelEl: dom.playbackWindowLabelEl,
     timeframeCardsEl: dom.timeframeCardsEl,
-    timeframeBodyEl: dom.timeframeBodyEl,
     timeframeComparisonEl: dom.timeframeComparisonEl,
     timeframeGenerationEl: dom.timeframeGenerationEl,
     metricsGridEl: dom.metricsGridEl,
@@ -308,6 +308,7 @@ const actionsContext = {
   showToast,
 };
 onMapStationClick = (stationId: string) => {
+  logInfo("dashboard", "Map station selected", { stationId });
   void handleMapStationClick(actionsContext, stationId);
 };
 
@@ -325,25 +326,41 @@ dom.stationSelect.addEventListener("change", async () => {
     dom.stationSelect.value &&
     (dom.stationSelect.value !== state.lastLoadedStationId || state.lastLoadedHistoryYears !== selectedHistoryYears())
   ) {
+    logInfo("dashboard", "Station selection changed; running analysis", {
+      stationId: dom.stationSelect.value,
+      historyYears: selectedHistoryYears(),
+    });
     await runAnalysisJob(actionsContext);
   }
 });
 
 dom.historyYearsSelect.addEventListener("change", async () => {
   if (!dom.stationSelect.value) return;
+  logInfo("dashboard", "History window changed; running analysis", {
+    stationId: dom.stationSelect.value,
+    historyYears: selectedHistoryYears(),
+  });
   await runAnalysisJob(actionsContext);
 });
 
 dom.playbackStepSelect.addEventListener("change", async () => {
   if (!state.snapshotState) return;
+  logInfo("dashboard", "Playback step changed", {
+    stationId: state.snapshotState.selectedStationId,
+    step: selectedStep(),
+  });
   await playbackManager.load(state.snapshotState, state.baselineStartLocal, state.baselineEndLocal);
 });
 
 dom.timeframeRunBtn.addEventListener("click", async () => {
   try {
+    logInfo("dashboard", "Running timeframe analysis");
     await timeframeManager.loadAnalytics();
     setWorkflowStage("explore", "Comparison refreshed.");
   } catch (error) {
+    logError("dashboard", "Timeframe analysis failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     setError(error instanceof Error ? error.message : "Unable to run timeframe analysis.");
   }
 });
@@ -353,6 +370,9 @@ dom.exportCsvButton.addEventListener("click", async () => {
 });
 dom.exportParquetButton.addEventListener("click", async () => {
   await downloadExport(actionsContext, "parquet");
+});
+dom.exportPdfButton.addEventListener("click", async () => {
+  await downloadAnalysisPdf(actionsContext);
 });
 
 dom.authLogoutBtn.addEventListener("click", () => {

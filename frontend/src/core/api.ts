@@ -1,3 +1,5 @@
+import { logDebug, logError, logInfo, logWarn } from "./logger.js";
+
 const authTokenStorageKey = "aemet.api_access_token";
 const authTokenExpiryStorageKey = "aemet.api_access_token_expires_at";
 const authLastActivityStorageKey = "aemet.api_last_activity_ms";
@@ -76,8 +78,8 @@ export function recordAuthActivity(force = false): void {
 }
 
 async function refreshAuthTokenIfNeeded(): Promise<boolean> {
-  const token = authTokenFromStorage();
-  if (!token) return false;
+    const token = authTokenFromStorage();
+    if (!token) return false;
 
   const nowMs = Date.now();
   if (isInactivityExpired(nowMs)) {
@@ -97,12 +99,14 @@ async function refreshAuthTokenIfNeeded(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
 
   lastRefreshAttemptMs = nowMs;
+  logDebug("api", "Attempting token refresh");
   refreshInFlight = (async () => {
     const response = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) {
+      logWarn("api", "Token refresh request failed", { status: response.status });
       if (response.status === 401) {
         clearAuthToken();
         notifyAuthRequired();
@@ -115,6 +119,7 @@ async function refreshAuthTokenIfNeeded(): Promise<boolean> {
     const expiresIn = (payload as { expiresInSeconds?: unknown }).expiresInSeconds;
     if (typeof nextToken !== "string" || typeof expiresIn !== "number") return false;
     saveAuthToken(nextToken, expiresIn, false);
+    logInfo("api", "Token refresh successful");
     return true;
   })();
   try {
@@ -137,9 +142,16 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
     await refreshAuthTokenIfNeeded();
     recordAuthActivity();
   }
+  logDebug("api", "fetchJson request", { url, method: options?.method ?? "GET" });
   const response = await fetch(url, requestWithAuth(options));
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    logError("api", "fetchJson failed", {
+      url,
+      method: options?.method ?? "GET",
+      status: response.status,
+      payload,
+    });
     if (response.status === 401 && !url.includes("/api/auth/token")) {
       clearAuthToken();
       notifyAuthRequired();
@@ -154,9 +166,16 @@ export async function fetchBlob(url: string, options?: RequestInit): Promise<Res
     await refreshAuthTokenIfNeeded();
     recordAuthActivity();
   }
+  logDebug("api", "fetchBlob request", { url, method: options?.method ?? "GET" });
   const response = await fetch(url, requestWithAuth(options));
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
+    logError("api", "fetchBlob failed", {
+      url,
+      method: options?.method ?? "GET",
+      status: response.status,
+      payload,
+    });
     if (response.status === 401) {
       clearAuthToken();
       notifyAuthRequired();

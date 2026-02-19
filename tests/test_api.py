@@ -446,6 +446,13 @@ def test_analysis_bootstrap_endpoint_returns_antarctic_station_profiles():
     assert response.headers["x-aemet-source"] == "Fuente: AEMET"
 
 
+def test_analysis_bootstrap_sets_request_id_header():
+    app.dependency_overrides[get_service] = lambda: FakeService()
+    response = client.get("/api/analysis/bootstrap")
+    assert response.status_code == 200
+    assert response.headers.get("x-request-id")
+
+
 def test_analysis_query_job_endpoints():
     app.dependency_overrides[get_service] = lambda: FakeService()
     create = client.post(

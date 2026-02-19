@@ -92,7 +92,6 @@ export async function runAnalysisJob(ctx: DashboardActionsContext): Promise<void
   ctx.elements.queryProgressWrap.classList.remove("show");
   ctx.elements.playbackProgressWrap.classList.remove("show");
   ctx.elements.timeframeCardsEl.innerHTML = "";
-  ctx.elements.timeframeBodyEl.innerHTML = "";
   ctx.elements.timeframeComparisonEl.innerHTML = "";
   ctx.charts.clearTimeframeTrend();
   ctx.elements.timeframeGenerationEl.textContent = "";

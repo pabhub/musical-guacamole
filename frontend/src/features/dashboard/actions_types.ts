@@ -29,7 +29,6 @@ export type DashboardActionElements = {
   queryProgressText: HTMLParagraphElement;
   playbackWindowLabelEl: HTMLParagraphElement;
   timeframeCardsEl: HTMLDivElement;
-  timeframeBodyEl: HTMLTableSectionElement;
   timeframeComparisonEl: HTMLDivElement;
   timeframeGenerationEl: HTMLParagraphElement;
   metricsGridEl: HTMLDivElement;

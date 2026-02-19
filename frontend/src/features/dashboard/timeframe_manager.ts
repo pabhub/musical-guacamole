@@ -1,6 +1,6 @@
 import { fetchJson, formatNumber, toApiDateTime } from "../../core/api.js";
 import { FeasibilitySnapshotResponse, TimeframeAnalyticsResponse, WindFarmParams } from "../../core/types.js";
-import { renderComparison, renderTimeframeCards, renderTimeframeTable } from "../timeframes.js";
+import { renderComparison, renderTimeframeCards } from "../timeframes.js";
 import { DashboardCharts } from "./charts.js";
 import { yearInConfiguredZone } from "./date_ranges.js";
 import { timeframeQueryParams } from "./timeframe_query.js";
@@ -9,8 +9,6 @@ type TimeframeElements = {
   timeframeGroupingSelect: HTMLSelectElement;
   timeframeRunBtn: HTMLButtonElement;
   timeframeCardsEl: HTMLDivElement;
-  timeframePeriodHeaderEl: HTMLTableCellElement;
-  timeframeBodyEl: HTMLTableSectionElement;
   timeframeComparisonEl: HTMLDivElement;
   timeframeGenerationEl: HTMLParagraphElement;
 };
@@ -154,9 +152,7 @@ export class TimeframeManager {
       }
 
       if (!payload.buckets.length) {
-        this.deps.elements.timeframePeriodHeaderEl.textContent = range.groupBy === "season" ? "Season" : "Month";
         this.deps.elements.timeframeCardsEl.innerHTML = "";
-        this.deps.elements.timeframeBodyEl.innerHTML = "";
         this.deps.elements.timeframeComparisonEl.innerHTML = "";
         this.deps.charts.clearTimeframeTrend();
         this.deps.elements.timeframeGenerationEl.textContent = "No observations available for the loaded history window.";
@@ -167,10 +163,8 @@ export class TimeframeManager {
         return;
       }
 
-      this.deps.elements.timeframePeriodHeaderEl.textContent = payload.groupBy === "season" ? "Season" : "Month";
       this.deps.charts.renderTimeframeTrend(payload);
       renderTimeframeCards(this.deps.elements.timeframeCardsEl, payload);
-      renderTimeframeTable(this.deps.elements.timeframeBodyEl, payload);
 
       const years = this.mergedYears(payload);
       renderComparison(this.deps.elements.timeframeComparisonEl, payload, years);

@@ -171,6 +171,7 @@ class DataMixin:
         checked_at_utc = datetime.now(UTC)
         cached_newest = self.repository.get_latest_measurement_timestamp(station_id)
         if cached_newest is not None:
+            logger.info("Latest availability for station %s resolved from cache newest=%s", station_id, cached_newest.isoformat())
             suggested_end = cached_newest
             suggested_start = cached_newest - timedelta(hours=24)
             suggested_aggregation = (
@@ -212,6 +213,12 @@ class DataMixin:
 
             if rows:
                 newest = max(row.measured_at_utc for row in rows)
+                logger.info(
+                    "Latest availability for station %s resolved by probing month window start=%s newest=%s",
+                    station_id,
+                    start_utc.isoformat(),
+                    newest.isoformat(),
+                )
                 suggested_end = newest
                 suggested_start = max(start_utc, newest - timedelta(hours=24))
                 suggested_aggregation = (
@@ -232,6 +239,11 @@ class DataMixin:
 
             probe_month_start_utc = previous_month_start(probe_month_start_utc)
 
+        logger.info(
+            "Latest availability probe found no data for station %s in lookback_days=%d",
+            station_id,
+            self._LATEST_AVAILABILITY_MAX_LOOKBACK_DAYS,
+        )
         return LatestAvailabilityResponse(
             station=station_label,
             checked_at_utc=checked_at_utc,

@@ -1,11 +1,18 @@
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.api.dependencies import get_service, set_compliance_headers
+from app.api.route_utils import (
+    SERVICE_ERROR_RESPONSES,
+    call_service_or_http,
+    coerce_datetime_to_timezone,
+    parse_local_range_or_400,
+    parse_optional_local_datetime_or_400,
+    parse_timezone_or_400,
+    to_utc_iso,
+)
 from app.models import (
     AnalysisBootstrapResponse,
     FeasibilitySnapshotResponse,
@@ -22,7 +29,7 @@ from app.models import (
 from app.services import AntarcticService
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["Analysis"])
 
 
 @router.get(
@@ -30,25 +37,31 @@ router = APIRouter()
     response_model=AnalysisBootstrapResponse,
     tags=["Analysis"],
     summary="Bootstrap dashboard stations and latest map snapshots",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def analysis_bootstrap(
     response: Response,
     service: AntarcticService = Depends(get_service),
 ) -> AnalysisBootstrapResponse:
-    try:
-        payload = service.get_analysis_bootstrap()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.warning("Upstream AEMET failure on analysis bootstrap endpoint: detail=%s", str(exc))
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    logger.info("Handling analysis bootstrap request")
+    payload = call_service_or_http(
+        lambda: service.get_analysis_bootstrap(),
+        logger=logger,
+        endpoint="analysis/bootstrap",
+    )
 
     payload_model = (
         payload if isinstance(payload, AnalysisBootstrapResponse) else AnalysisBootstrapResponse.model_validate(payload)
     )
     latest_values = [value for value in payload_model.latest_observation_by_station.values() if value is not None]
-    latest_observation_utc = max(latest_values).astimezone(ZoneInfo("UTC")).isoformat() if latest_values else None
+    latest_observation_utc = to_utc_iso(max(latest_values) if latest_values else None)
     set_compliance_headers(response, latest_observation_utc=latest_observation_utc)
+    logger.info(
+        "Analysis bootstrap served stations=%d selectable=%d snapshots=%d",
+        len(payload_model.stations),
+        len(payload_model.selectable_station_ids),
+        len(payload_model.latest_snapshots),
+    )
     return payload_model
 
 
@@ -57,29 +70,19 @@ def analysis_bootstrap(
     response_model=QueryJobCreatedResponse,
     tags=["Analysis"],
     summary="Create a cache-first backfill job for one station",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def create_query_job(
     response: Response,
     payload: QueryJobCreateRequest,
     service: AntarcticService = Depends(get_service),
 ) -> QueryJobCreatedResponse:
-    try:
-        tz = ZoneInfo(payload.location)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid timezone location: {payload.location}") from exc
-
-    start = payload.start
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=tz)
-    else:
-        start = start.astimezone(tz)
+    tz = parse_timezone_or_400(payload.location)
+    start = coerce_datetime_to_timezone(payload.start, tz)
 
     history_start = payload.history_start
     if history_start is not None:
-        if history_start.tzinfo is None:
-            history_start = history_start.replace(tzinfo=tz)
-        else:
-            history_start = history_start.astimezone(tz)
+        history_start = coerce_datetime_to_timezone(history_start, tz)
 
     selected_types: list[MeasurementType] = []
     for value in payload.types:
@@ -88,8 +91,15 @@ def create_query_job(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid measurement type: {value}") from exc
 
-    try:
-        job = service.create_query_job(
+    logger.info(
+        "Creating query job station=%s timezone=%s aggregation=%s playback_step=%s",
+        payload.station,
+        payload.location,
+        payload.aggregation.value,
+        payload.playback_step.value,
+    )
+    job = call_service_or_http(
+        lambda: service.create_query_job(
             station=payload.station,
             start_local=start,
             timezone_input=payload.location,
@@ -97,15 +107,23 @@ def create_query_job(
             aggregation=payload.aggregation,
             selected_types=selected_types,
             history_start_local=history_start,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.warning("Upstream AEMET failure on query-jobs endpoint: detail=%s", str(exc))
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        ),
+        logger=logger,
+        endpoint="analysis/query-jobs",
+        context={"station": payload.station},
+    )
+    job_model = job if isinstance(job, QueryJobCreatedResponse) else QueryJobCreatedResponse.model_validate(job)
 
     set_compliance_headers(response)
-    return job
+    logger.info(
+        "Created query job id=%s station=%s total_windows=%d missing_windows=%d planned_calls=%d",
+        job_model.job_id,
+        job_model.station_id,
+        job_model.total_windows,
+        job_model.missing_windows,
+        job_model.total_api_calls_planned,
+    )
+    return job_model
 
 
 @router.get(
@@ -113,16 +131,19 @@ def create_query_job(
     response_model=QueryJobStatusResponse,
     tags=["Analysis"],
     summary="Poll cache/backfill job status",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def query_job_status(
     job_id: str,
     response: Response,
     service: AntarcticService = Depends(get_service),
 ) -> QueryJobStatusResponse:
-    try:
-        job = service.get_query_job_status(job_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    job = call_service_or_http(
+        lambda: service.get_query_job_status(job_id),
+        logger=logger,
+        endpoint="analysis/query-jobs/status",
+        context={"job_id": job_id},
+    )
     set_compliance_headers(response)
     return job
 
@@ -132,16 +153,19 @@ def query_job_status(
     response_model=FeasibilitySnapshotResponse,
     tags=["Analysis"],
     summary="Get latest snapshot materialized for a completed/running job",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def query_job_result(
     job_id: str,
     response: Response,
     service: AntarcticService = Depends(get_service),
 ) -> FeasibilitySnapshotResponse:
-    try:
-        snapshot = service.get_query_job_result(job_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    snapshot = call_service_or_http(
+        lambda: service.get_query_job_result(job_id),
+        logger=logger,
+        endpoint="analysis/query-jobs/result",
+        context={"job_id": job_id},
+    )
     snapshot_model = (
         snapshot if isinstance(snapshot, FeasibilitySnapshotResponse) else FeasibilitySnapshotResponse.model_validate(snapshot)
     )
@@ -154,9 +178,7 @@ def query_job_result(
             latest_observation_utc = latest
     set_compliance_headers(
         response,
-        latest_observation_utc=latest_observation_utc.astimezone(ZoneInfo("UTC")).isoformat()
-        if latest_observation_utc is not None
-        else None,
+        latest_observation_utc=to_utc_iso(latest_observation_utc),
     )
     return snapshot_model
 
@@ -166,6 +188,7 @@ def query_job_result(
     response_model=PlaybackResponse,
     tags=["Analysis"],
     summary="Build playback frames for a selected station window",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def playback(
     response: Response,
@@ -176,42 +199,25 @@ def playback(
     location: str = Query("UTC", description="Input timezone location, e.g. Europe/Madrid"),
     service: AntarcticService = Depends(get_service),
 ) -> PlaybackResponse:
-    try:
-        tz = ZoneInfo(location)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid timezone location: {location}") from exc
-
-    try:
-        start_parsed = datetime.fromisoformat(start)
-        end_parsed = datetime.fromisoformat(end)
-        start_local = start_parsed.replace(tzinfo=tz) if start_parsed.tzinfo is None else start_parsed.astimezone(tz)
-        end_local = end_parsed.replace(tzinfo=tz) if end_parsed.tzinfo is None else end_parsed.astimezone(tz)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Datetime format must be YYYY-MM-DDTHH:MM:SS") from exc
-    try:
-        payload = service.get_playback_frames(
+    tz = parse_timezone_or_400(location)
+    start_local, end_local = parse_local_range_or_400(start, end, tz, error_prefix="Datetime")
+    payload = call_service_or_http(
+        lambda: service.get_playback_frames(
             station=station,
             start_local=start_local,
             end_local=end_local,
             step=step,
             timezone_input=location,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.warning(
-            "Upstream AEMET failure on playback endpoint: station=%s start=%s end=%s detail=%s",
-            station,
-            start_local.isoformat(),
-            end_local.isoformat(),
-            str(exc),
-        )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        ),
+        logger=logger,
+        endpoint="analysis/playback",
+        context={"station": station, "start": start_local.isoformat(), "end": end_local.isoformat()},
+    )
 
     payload_model = payload if isinstance(payload, PlaybackResponse) else PlaybackResponse.model_validate(payload)
     latest_utc = None
     if payload_model.frames:
-        latest_utc = max(frame.datetime_local for frame in payload_model.frames).astimezone(ZoneInfo("UTC")).isoformat()
+        latest_utc = to_utc_iso(max(frame.datetime_local for frame in payload_model.frames))
     set_compliance_headers(response, latest_observation_utc=latest_utc)
     return payload_model
 
@@ -221,6 +227,7 @@ def playback(
     response_model=TimeframeAnalyticsResponse,
     tags=["Analysis"],
     summary="Compute grouped timeframe analytics and optional comparison",
+    responses=SERVICE_ERROR_RESPONSES,
 )
 def timeframe_analytics(
     response: Response,
@@ -244,38 +251,18 @@ def timeframe_analytics(
     max_operating_pressure_hpa: float | None = Query(default=None, alias="maxOperatingPressureHpa"),
     service: AntarcticService = Depends(get_service),
 ) -> TimeframeAnalyticsResponse:
-    try:
-        tz = ZoneInfo(location)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid timezone location: {location}") from exc
-
-    try:
-        start_parsed = datetime.fromisoformat(start)
-        end_parsed = datetime.fromisoformat(end)
-        start_local = start_parsed.replace(tzinfo=tz) if start_parsed.tzinfo is None else start_parsed.astimezone(tz)
-        end_local = end_parsed.replace(tzinfo=tz) if end_parsed.tzinfo is None else end_parsed.astimezone(tz)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Datetime format must be YYYY-MM-DDTHH:MM:SS") from exc
-
-    compare_start_local = None
-    compare_end_local = None
-    try:
-        if compare_start is not None:
-            compare_start_parsed = datetime.fromisoformat(compare_start)
-            compare_start_local = (
-                compare_start_parsed.replace(tzinfo=tz)
-                if compare_start_parsed.tzinfo is None
-                else compare_start_parsed.astimezone(tz)
-            )
-        if compare_end is not None:
-            compare_end_parsed = datetime.fromisoformat(compare_end)
-            compare_end_local = (
-                compare_end_parsed.replace(tzinfo=tz)
-                if compare_end_parsed.tzinfo is None
-                else compare_end_parsed.astimezone(tz)
-            )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Comparison datetime format must be YYYY-MM-DDTHH:MM:SS") from exc
+    tz = parse_timezone_or_400(location)
+    start_local, end_local = parse_local_range_or_400(start, end, tz, error_prefix="Datetime")
+    compare_start_local = parse_optional_local_datetime_or_400(
+        compare_start,
+        tz,
+        error_prefix="Comparison datetime",
+    )
+    compare_end_local = parse_optional_local_datetime_or_400(
+        compare_end,
+        tz,
+        error_prefix="Comparison datetime",
+    )
     if (compare_start_local is None) != (compare_end_local is None):
         raise HTTPException(
             status_code=400,
@@ -327,8 +314,14 @@ def timeframe_analytics(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    try:
-        payload = service.get_timeframe_analytics(
+    logger.info(
+        "Handling timeframe analysis station=%s group_by=%s force_refresh_on_empty=%s",
+        station,
+        group_by.value,
+        force_refresh_on_empty,
+    )
+    payload = call_service_or_http(
+        lambda: service.get_timeframe_analytics(
             station=station,
             start_local=start_local,
             end_local=end_local,
@@ -338,18 +331,11 @@ def timeframe_analytics(
             compare_end_local=compare_end_local,
             simulation_params=simulation_params,
             force_refresh_on_empty=force_refresh_on_empty,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.warning(
-            "Upstream AEMET failure on timeframe endpoint: station=%s start=%s end=%s detail=%s",
-            station,
-            start_local.isoformat(),
-            end_local.isoformat(),
-            str(exc),
-        )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        ),
+        logger=logger,
+        endpoint="analysis/timeframes",
+        context={"station": station, "start": start_local.isoformat(), "end": end_local.isoformat()},
+    )
 
     payload_model = (
         payload
@@ -358,6 +344,12 @@ def timeframe_analytics(
     )
     latest_utc = None
     if payload_model.buckets:
-        latest_utc = payload_model.buckets[-1].end_local.astimezone(ZoneInfo("UTC")).isoformat()
+        latest_utc = to_utc_iso(payload_model.buckets[-1].end_local)
     set_compliance_headers(response, latest_observation_utc=latest_utc)
+    logger.info(
+        "Timeframe analysis completed station=%s buckets=%d group_by=%s",
+        station,
+        len(payload_model.buckets),
+        payload_model.group_by.value,
+    )
     return payload_model

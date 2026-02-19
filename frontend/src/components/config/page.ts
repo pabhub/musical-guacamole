@@ -5,8 +5,8 @@ export function configPageTemplate(): string {
   return `
     ${topNavTemplate({
       active: "config",
-      brand: "AEMET Antarctic Analytics",
-      showAuth: false,
+      brand: "GS Inima · Antarctic Wind Feasibility",
+      showAuth: true,
     })}
     <main class="config-page">
       <section class="config-card">
@@ -74,6 +74,15 @@ export function configPageTemplate(): string {
             <button id="reset-wf" type="button" class="secondary">Reset to defaults</button>
           </div>
           <p class="status-note" id="wf-status">Wind farm parameters not configured.</p>
+        </section>
+
+        <section class="subsection">
+          <h2>Troubleshooting</h2>
+          <label class="inline-label">
+            <input id="frontend-debug-toggle" type="checkbox" />
+            Enable frontend debug logging in browser console
+          </label>
+          <p class="status-note" id="debug-status">Frontend debug logging is disabled.</p>
         </section>
       </section>
     </main>

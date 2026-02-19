@@ -53,30 +53,6 @@ export function analysisReportTemplate(): string {
         </div>
         <div id="timeframe-cards" class="timeframe-cards"></div>
         <div id="timeframe-comparison" class="comparison-grid"></div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th id="timeframe-period-column">Period</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Data Points</th>
-                <th>Min Speed</th>
-                <th>Avg Speed</th>
-                <th>Max Speed</th>
-                <th>P90 (90th pct)</th>
-                <th>Hours ≥ 3</th>
-                <th>Hours ≥ 5</th>
-                <th>Variability</th>
-                <th>Dominant Heading</th>
-                <th>Avg Temp</th>
-                <th>Avg Pressure</th>
-                <th>Generation (MWh)</th>
-              </tr>
-            </thead>
-            <tbody id="timeframe-output"></tbody>
-          </table>
-        </div>
       </section>
     </article>
   `;

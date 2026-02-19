@@ -1,10 +1,14 @@
-import { browserTimeZone, isValidTimeZone, startAuthSessionManager } from "./core/api.js";
+import { browserTimeZone, clearAuthToken, hasValidAuthToken, isValidTimeZone, startAuthSessionManager } from "./core/api.js";
 import { requiredElement } from "./core/dom.js";
+import { redirectToLogin } from "./core/navigation.js";
 import { renderConfigPage } from "./components/config/page.js";
+import { setDebugLoggingEnabled } from "./core/logger.js";
 import {
+  clearAuthUser,
   clearInputTimeZone,
   clearWindFarmParams,
   configuredInputTimeZone,
+  getStoredAuthUser,
   getStoredInputTimeZone,
   readStoredWindFarmParams,
   saveInputTimeZone,
@@ -35,6 +39,11 @@ const minOperatingPressureInput = requiredElement<HTMLInputElement>("wf-min-pres
 const maxOperatingPressureInput = requiredElement<HTMLInputElement>("wf-max-pressure");
 const saveWindFarmBtn = requiredElement<HTMLButtonElement>("save-wf");
 const resetWindFarmBtn = requiredElement<HTMLButtonElement>("reset-wf");
+const frontendDebugToggle = requiredElement<HTMLInputElement>("frontend-debug-toggle");
+const debugStatusEl = requiredElement<HTMLParagraphElement>("debug-status");
+const authUserEl = requiredElement<HTMLSpanElement>("auth-user");
+const authLogoutBtn = requiredElement<HTMLButtonElement>("auth-logout");
+const debugStorageKey = "aemet.debug_logging";
 
 function setTimeZoneStatus(message: string): void {
   timezoneStatusEl.textContent = message;
@@ -42,6 +51,14 @@ function setTimeZoneStatus(message: string): void {
 
 function setWindFarmStatus(message: string): void {
   windFarmStatusEl.textContent = message;
+}
+
+function setDebugStatus(message: string): void {
+  debugStatusEl.textContent = message;
+}
+
+function refreshAuthBadge(): void {
+  authUserEl.textContent = `Signed in: ${getStoredAuthUser() ?? "Not authenticated"}`;
 }
 
 function hydrateTimeZoneSettings(): void {
@@ -74,6 +91,12 @@ function hydrateWindFarmSettings(): void {
     `operating ${params.minOperatingTempC}..${params.maxOperatingTempC} ºC and ` +
     `${params.minOperatingPressureHpa}..${params.maxOperatingPressureHpa} hPa.`,
   );
+}
+
+function hydrateDebugSettings(): void {
+  const enabled = localStorage.getItem(debugStorageKey) === "1";
+  frontendDebugToggle.checked = enabled;
+  setDebugStatus(`Frontend debug logging is ${enabled ? "enabled" : "disabled"}.`);
 }
 
 timezoneSaveBtn.addEventListener("click", () => {
@@ -130,5 +153,28 @@ resetWindFarmBtn.addEventListener("click", () => {
   setWindFarmStatus("Wind farm parameters reset to defaults.");
 });
 
+frontendDebugToggle.addEventListener("change", () => {
+  setDebugLoggingEnabled(frontendDebugToggle.checked);
+  setDebugStatus(`Frontend debug logging is ${frontendDebugToggle.checked ? "enabled" : "disabled"}.`);
+});
+
+authLogoutBtn.addEventListener("click", () => {
+  clearAuthToken();
+  clearAuthUser();
+  refreshAuthBadge();
+  redirectToLogin("/login");
+});
+
+window.addEventListener("auth:required", () => {
+  refreshAuthBadge();
+  redirectToLogin(window.location.pathname);
+});
+
+if (!hasValidAuthToken()) {
+  redirectToLogin(window.location.pathname);
+}
+
+refreshAuthBadge();
 hydrateTimeZoneSettings();
 hydrateWindFarmSettings();
+hydrateDebugSettings();

@@ -1,0 +1,394 @@
+from __future__ import annotations
+
+import logging
+import random
+import re
+import threading
+import time
+import uuid
+from datetime import datetime
+from typing import Any
+
+from app.core.exceptions import AppValidationError
+from app.models import (
+    FeasibilitySnapshotResponse,
+    MeasurementType,
+    PlaybackStep,
+    QueryJobCreatedResponse,
+    QueryJobStatus,
+    QueryJobStatusResponse,
+    TimeAggregation,
+)
+from app.services.antarctic.constants import UTC
+from app.services.antarctic.windows import split_month_windows_covering_range
+
+logger = logging.getLogger(__name__)
+
+
+class PlaybackQueryJobsMixin:
+    repository: object
+    aemet_client: object
+    settings: object
+
+    _query_job_lock = threading.Lock()
+    _query_job_threads: dict[str, threading.Thread] = {}
+
+    def create_query_job(
+        self,
+        station: str,
+        start_local: datetime,
+        timezone_input: str,
+        playback_step: PlaybackStep,
+        aggregation: TimeAggregation,
+        selected_types: list[MeasurementType],
+        history_start_local: datetime | None = None,
+    ) -> QueryJobCreatedResponse:
+        station_id = self.station_id_for(station)
+        self._assert_station_supported_by_antarctic_endpoint(station_id)
+        self._assert_station_selectable(station_id)
+
+        latest = self.get_latest_availability(station_id)
+        if latest.newest_observation_utc is None:
+            raise AppValidationError(
+                f"No recent observations are available for station '{station_id}'. Try another station later."
+            )
+
+        latest_local = latest.newest_observation_utc.astimezone(start_local.tzinfo or UTC)
+        effective_end_local = latest_local
+        if start_local >= effective_end_local:
+            raise AppValidationError(
+                "Start datetime must be earlier than the latest available observation for this station."
+            )
+
+        requested_history_start = history_start_local or start_local
+        if requested_history_start > start_local:
+            requested_history_start = start_local
+        history_start_utc = requested_history_start.astimezone(UTC)
+        requested_start_utc = start_local.astimezone(UTC)
+        effective_end_utc = effective_end_local.astimezone(UTC)
+
+        windows = self._split_windows(history_start_utc, effective_end_utc)
+        window_states: list[dict[str, Any]] = []
+        cached_windows = 0
+        for window_start, window_end in windows:
+            has_cached = self.repository.has_cached_fetch_window(
+                station_id=station_id,
+                start_utc=window_start,
+                end_utc=window_end,
+            )
+            if has_cached:
+                cached_windows += 1
+            window_states.append(
+                {
+                    "startUtc": window_start.isoformat(),
+                    "endUtc": window_end.isoformat(),
+                    "status": "cached" if has_cached else "pending",
+                    "apiCallsPlanned": 0 if has_cached else 2,
+                    "apiCallsCompleted": 0,
+                    "attempts": 0,
+                    "errorDetail": None,
+                }
+            )
+
+        total_windows = len(window_states)
+        missing_windows = total_windows - cached_windows
+        total_api_calls_planned = missing_windows * 2
+        frames_planned = self._frame_count_for_range(start_local, effective_end_local, playback_step)
+        frames_planned = max(frames_planned, 1)
+
+        job_id = uuid.uuid4().hex
+        status = QueryJobStatus.COMPLETE if missing_windows == 0 else QueryJobStatus.PENDING
+        completed_windows = cached_windows if missing_windows else total_windows
+        frames_ready = frames_planned if missing_windows == 0 else int((completed_windows / total_windows) * frames_planned)
+        payload = {
+            "job_id": job_id,
+            "station_id": station_id,
+            "requested_start_utc": requested_start_utc.isoformat(),
+            "effective_end_utc": effective_end_utc.isoformat(),
+            "history_start_utc": history_start_utc.isoformat(),
+            "timezone_input": timezone_input,
+            "aggregation": aggregation.value,
+            "selected_types_json": [value.value for value in selected_types],
+            "playback_step": playback_step.value,
+            "status": status.value,
+            "total_windows": total_windows,
+            "cached_windows": cached_windows,
+            "missing_windows": missing_windows,
+            "completed_windows": completed_windows,
+            "total_api_calls_planned": total_api_calls_planned,
+            "completed_api_calls": 0,
+            "frames_planned": frames_planned,
+            "frames_ready": frames_ready,
+            "playback_ready": missing_windows == 0,
+            "message": "Ready from cache." if missing_windows == 0 else "Queued missing windows for fetch.",
+            "error_detail": None,
+            "windows_json": window_states,
+            "created_at_utc": datetime.now(UTC).isoformat(),
+        }
+        self.repository.upsert_analysis_query_job(payload)
+        logger.info(
+            "Created analysis query job id=%s station=%s total_windows=%d missing_windows=%d planned_calls=%d",
+            job_id,
+            station_id,
+            total_windows,
+            missing_windows,
+            total_api_calls_planned,
+        )
+
+        if missing_windows > 0:
+            self._start_query_job_thread(job_id)
+
+        return self._to_query_job_created_response(payload)
+
+    def _start_query_job_thread(self, job_id: str) -> None:
+        with self._query_job_lock:
+            existing = self._query_job_threads.get(job_id)
+            if existing is not None and existing.is_alive():
+                return
+
+            worker = threading.Thread(target=self._run_query_job_worker, args=(job_id,), daemon=True)
+            self._query_job_threads[job_id] = worker
+            worker.start()
+
+    def _run_query_job_worker(self, job_id: str) -> None:
+        payload = self.repository.get_analysis_query_job(job_id)
+        if payload is None:
+            logger.warning("Query job worker could not find payload for job id=%s", job_id)
+            return
+
+        payload["status"] = QueryJobStatus.RUNNING.value
+        payload["message"] = "Fetching missing windows from AEMET."
+        self.repository.upsert_analysis_query_job(payload)
+
+        station_id = str(payload["station_id"])
+        total_windows = int(payload["total_windows"])
+        windows: list[dict[str, Any]] = list(payload["windows_json"])  # type: ignore[arg-type]
+        if not windows:
+            logger.info("Query job id=%s has no windows to process; marking complete.", job_id)
+            payload["status"] = QueryJobStatus.COMPLETE.value
+            payload["playback_ready"] = True
+            payload["message"] = "No fetch required."
+            self.repository.upsert_analysis_query_job(payload)
+            return
+
+        for index, window in enumerate(windows):
+            if window.get("status") in {"cached", "complete"}:
+                continue
+
+            attempts = int(window.get("attempts", 0))
+            max_attempts = 4
+            success = False
+            while attempts < max_attempts and not success:
+                attempts += 1
+                window["attempts"] = attempts
+                window["status"] = "running"
+                windows[index] = window
+                payload["windows_json"] = windows
+                payload["message"] = f"Fetching window {index + 1}/{total_windows}."
+                self.repository.upsert_analysis_query_job(payload)
+
+                start_utc = datetime.fromisoformat(str(window["startUtc"]))
+                end_utc = datetime.fromisoformat(str(window["endUtc"]))
+                if self.repository.has_cached_fetch_window(station_id, start_utc, end_utc):
+                    window["status"] = "cached"
+                    window["apiCallsCompleted"] = 0
+                    window["errorDetail"] = None
+                    success = True
+                    continue
+                try:
+                    rows = self.aemet_client.fetch_station_data(start_utc, end_utc, station_id)
+                    self.repository.upsert_measurements(
+                        station_id=station_id,
+                        rows=rows,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                    )
+                    window["status"] = "complete"
+                    window["apiCallsCompleted"] = int(window.get("apiCallsPlanned", 2))
+                    window["errorDetail"] = None
+                    success = True
+                except RuntimeError as exc:
+                    detail = str(exc)
+                    window["errorDetail"] = detail
+                    is_rate_limited = "429" in detail
+                    is_retryable_upstream = self._is_retryable_upstream_error(detail)
+                    if (is_rate_limited or is_retryable_upstream) and attempts < max_attempts:
+                        window["status"] = "pending"
+                        windows[index] = window
+                        payload["windows_json"] = windows
+                        limiter_seconds = max(float(getattr(self.settings, "aemet_min_request_interval_seconds", 2.0)), 0.5)
+                        if is_rate_limited:
+                            retry_after_seconds = self._parse_retry_after_seconds(detail)
+                            base_backoff = (
+                                retry_after_seconds if retry_after_seconds is not None else max(limiter_seconds * 5.0, 5.0)
+                            )
+                        else:
+                            base_backoff = max(limiter_seconds * 2.0, 2.0)
+                        sleep_seconds = min(base_backoff * (2 ** (attempts - 1)), 300.0) + random.uniform(0.0, 1.0)
+                        if is_rate_limited:
+                            payload["message"] = (
+                                f"AEMET rate limited on window {index + 1}/{total_windows}. "
+                                f"Retry in ~{int(round(sleep_seconds))}s (attempt {attempts}/{max_attempts})."
+                            )
+                        else:
+                            payload["message"] = (
+                                f"AEMET temporary error on window {index + 1}/{total_windows}. "
+                                f"Retry in ~{int(round(sleep_seconds))}s (attempt {attempts}/{max_attempts})."
+                            )
+                        self.repository.upsert_analysis_query_job(payload)
+                        time.sleep(sleep_seconds)
+                        continue
+
+                    logger.error(
+                        "Query job id=%s failed window %s/%s station=%s after %d attempts: %s",
+                        job_id,
+                        index + 1,
+                        total_windows,
+                        station_id,
+                        attempts,
+                        detail,
+                    )
+                    window["status"] = "failed"
+                    windows[index] = window
+                    payload["windows_json"] = windows
+                    payload["status"] = QueryJobStatus.FAILED.value
+                    payload["error_detail"] = detail
+                    payload["message"] = "Backfill failed for at least one window."
+                    self._update_query_job_progress(payload)
+                    self.repository.upsert_analysis_query_job(payload)
+                    return
+
+            windows[index] = window
+            payload["windows_json"] = windows
+            self._update_query_job_progress(payload)
+            self.repository.upsert_analysis_query_job(payload)
+
+        payload["status"] = QueryJobStatus.COMPLETE.value
+        payload["playback_ready"] = True
+        payload["message"] = "All requested windows are available in cache."
+        self._update_query_job_progress(payload)
+        self.repository.upsert_analysis_query_job(payload)
+        logger.info(
+            "Query job completed id=%s station=%s completed_windows=%d/%d completed_calls=%d/%d",
+            job_id,
+            station_id,
+            payload.get("completed_windows"),
+            payload.get("total_windows"),
+            payload.get("completed_api_calls"),
+            payload.get("total_api_calls_planned"),
+        )
+
+    def _update_query_job_progress(self, payload: dict[str, Any]) -> None:
+        windows: list[dict[str, Any]] = list(payload["windows_json"])
+        completed_windows = sum(1 for window in windows if window.get("status") in {"cached", "complete"})
+        completed_api_calls = sum(int(window.get("apiCallsCompleted", 0)) for window in windows)
+        total_windows = max(int(payload.get("total_windows", 0)), 1)
+        frames_planned = max(int(payload.get("frames_planned", 1)), 1)
+        frames_ready = int((completed_windows / total_windows) * frames_planned)
+
+        payload["completed_windows"] = completed_windows
+        payload["completed_api_calls"] = completed_api_calls
+        payload["frames_ready"] = min(frames_planned, frames_ready)
+        payload["playback_ready"] = completed_windows == int(payload.get("total_windows", 0))
+
+    def get_query_job_status(self, job_id: str) -> QueryJobStatusResponse:
+        payload = self.repository.get_analysis_query_job(job_id)
+        if payload is None:
+            raise AppValidationError(f"Query job '{job_id}' was not found.")
+        return self._to_query_job_status_response(payload)
+
+    def get_query_job_result(self, job_id: str) -> FeasibilitySnapshotResponse:
+        payload = self.repository.get_analysis_query_job(job_id)
+        if payload is None:
+            raise AppValidationError(f"Query job '{job_id}' was not found.")
+
+        station_id = str(payload["station_id"])
+        timezone_input = str(payload["timezone_input"])
+        output_tz = self._resolve_output_timezone(timezone_input)
+        start_local = datetime.fromisoformat(str(payload["requested_start_utc"])).astimezone(output_tz)
+        end_local = datetime.fromisoformat(str(payload["effective_end_utc"])).astimezone(output_tz)
+        aggregation = TimeAggregation(str(payload["aggregation"]))
+        selected_types = [MeasurementType(value) for value in payload.get("selected_types_json", [])]
+        snapshot = self.get_station_snapshot(
+            station=station_id,
+            start_local=start_local,
+            end_local=end_local,
+            aggregation=aggregation,
+            selected_types=selected_types,
+            timezone_input=timezone_input,
+        )
+        if payload["status"] != QueryJobStatus.COMPLETE.value:
+            snapshot.notes.append(
+                "Some historical windows are still loading. Values shown are based on currently cached observations."
+            )
+        return snapshot
+
+    @staticmethod
+    def _parse_retry_after_seconds(detail: str) -> float | None:
+        match = re.search(r"Retry-After=(\d+)s", detail)
+        if match is None:
+            return None
+        try:
+            value = float(match.group(1))
+        except ValueError:
+            return None
+        if value < 1.0:
+            return 1.0
+        return min(value, 600.0)
+
+    @staticmethod
+    def _is_retryable_upstream_error(detail: str) -> bool:
+        return any(code in detail for code in ("HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504"))
+
+    @staticmethod
+    def _split_windows(start_utc: datetime, end_utc: datetime) -> list[tuple[datetime, datetime]]:
+        return split_month_windows_covering_range(start_utc, end_utc)
+
+    @staticmethod
+    def _to_query_job_created_response(payload: dict[str, Any]) -> QueryJobCreatedResponse:
+        return QueryJobCreatedResponse(
+            jobId=payload["job_id"],
+            status=QueryJobStatus(str(payload["status"])),
+            stationId=payload["station_id"],
+            requestedStartUtc=datetime.fromisoformat(str(payload["requested_start_utc"])),
+            effectiveEndUtc=datetime.fromisoformat(str(payload["effective_end_utc"])),
+            historyStartUtc=datetime.fromisoformat(str(payload["history_start_utc"])),
+            totalWindows=int(payload["total_windows"]),
+            cachedWindows=int(payload["cached_windows"]),
+            missingWindows=int(payload["missing_windows"]),
+            totalApiCallsPlanned=int(payload["total_api_calls_planned"]),
+            completedApiCalls=int(payload["completed_api_calls"]),
+            framesPlanned=int(payload["frames_planned"]),
+            framesReady=int(payload["frames_ready"]),
+            playbackReady=bool(payload["playback_ready"]),
+            message=str(payload.get("message", "")),
+        )
+
+    @staticmethod
+    def _to_query_job_status_response(payload: dict[str, Any]) -> QueryJobStatusResponse:
+        total_calls = int(payload["total_api_calls_planned"])
+        completed_calls = int(payload["completed_api_calls"])
+        if total_calls > 0:
+            percent = round((completed_calls / total_calls) * 100.0, 2)
+        elif payload["status"] == QueryJobStatus.COMPLETE.value:
+            percent = 100.0
+        else:
+            percent = 0.0
+        return QueryJobStatusResponse(
+            jobId=payload["job_id"],
+            status=QueryJobStatus(str(payload["status"])),
+            stationId=payload["station_id"],
+            totalWindows=int(payload["total_windows"]),
+            cachedWindows=int(payload["cached_windows"]),
+            missingWindows=int(payload["missing_windows"]),
+            completedWindows=int(payload["completed_windows"]),
+            totalApiCallsPlanned=total_calls,
+            completedApiCalls=completed_calls,
+            framesPlanned=int(payload["frames_planned"]),
+            framesReady=int(payload["frames_ready"]),
+            playbackReady=bool(payload["playback_ready"]),
+            percent=percent,
+            message=str(payload.get("message", "")),
+            errorDetail=payload.get("error_detail"),
+            updatedAtUtc=datetime.fromisoformat(str(payload["updated_at_utc"])),
+        )

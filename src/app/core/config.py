@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -79,3 +80,10 @@ def get_settings() -> Settings:
         jwt_access_token_ttl_seconds=int(os.getenv("JWT_ACCESS_TOKEN_TTL_SECONDS", "3600")),
         jwt_issuer=os.getenv("JWT_ISSUER", "antarctic-analytics"),
     )
+
+
+get_settings = lru_cache(maxsize=1)(get_settings)
+
+
+def clear_settings_cache() -> None:
+    get_settings.cache_clear()  # type: ignore[attr-defined]

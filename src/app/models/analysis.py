@@ -105,16 +105,37 @@ class TimeframeGroupBy(str, Enum):
 
 
 class WindFarmSimulationParams(BaseModel):
-    turbine_count: int = Field(alias="turbineCount", ge=1, le=500)
-    rated_power_kw: float = Field(alias="ratedPowerKw", gt=0)
-    cut_in_speed_mps: float = Field(alias="cutInSpeedMps", ge=0)
-    rated_speed_mps: float = Field(alias="ratedSpeedMps", gt=0)
-    cut_out_speed_mps: float = Field(alias="cutOutSpeedMps", gt=0)
-    reference_air_density_kgm3: float = Field(alias="referenceAirDensityKgM3", default=1.225, gt=0)
-    min_operating_temp_c: float | None = Field(alias="minOperatingTempC", default=-40.0)
-    max_operating_temp_c: float | None = Field(alias="maxOperatingTempC", default=45.0)
-    min_operating_pressure_hpa: float | None = Field(alias="minOperatingPressureHpa", default=850.0)
-    max_operating_pressure_hpa: float | None = Field(alias="maxOperatingPressureHpa", default=1085.0)
+    turbine_count: int = Field(alias="turbineCount", ge=1, le=500, description="Number of turbines in the simulated wind farm.")
+    rated_power_kw: float = Field(alias="ratedPowerKw", gt=0, description="Rated electrical power per turbine (kW).")
+    cut_in_speed_mps: float = Field(alias="cutInSpeedMps", ge=0, description="Cut-in wind speed (m/s).")
+    rated_speed_mps: float = Field(alias="ratedSpeedMps", gt=0, description="Rated wind speed (m/s).")
+    cut_out_speed_mps: float = Field(alias="cutOutSpeedMps", gt=0, description="Cut-out wind speed (m/s).")
+    reference_air_density_kgm3: float = Field(
+        alias="referenceAirDensityKgM3",
+        default=1.225,
+        gt=0,
+        description="Reference air density used for density-corrected power estimation.",
+    )
+    min_operating_temp_c: float | None = Field(
+        alias="minOperatingTempC",
+        default=-40.0,
+        description="Minimum operating temperature threshold. Data points below this are treated as unavailable for generation.",
+    )
+    max_operating_temp_c: float | None = Field(
+        alias="maxOperatingTempC",
+        default=45.0,
+        description="Maximum operating temperature threshold. Data points above this are treated as unavailable for generation.",
+    )
+    min_operating_pressure_hpa: float | None = Field(
+        alias="minOperatingPressureHpa",
+        default=850.0,
+        description="Minimum operating pressure threshold (hPa).",
+    )
+    max_operating_pressure_hpa: float | None = Field(
+        alias="maxOperatingPressureHpa",
+        default=1085.0,
+        description="Maximum operating pressure threshold (hPa).",
+    )
 
     @model_validator(mode="after")
     def _validate_envelope(self) -> "WindFarmSimulationParams":
@@ -138,13 +159,27 @@ class WindFarmSimulationParams(BaseModel):
 
 
 class QueryJobCreateRequest(BaseModel):
-    station: str
-    start: datetime
-    location: str = "UTC"
-    history_start: datetime | None = Field(default=None, alias="historyStart")
-    aggregation: TimeAggregation = TimeAggregation.NONE
-    types: list[str] = Field(default_factory=list)
-    playback_step: PlaybackStep = Field(default=PlaybackStep.HOURLY, alias="playbackStep")
+    station: str = Field(description="Station identifier. Supported selectable IDs: 89064, 89070.")
+    start: datetime = Field(description="Start datetime for analysis in the requested input timezone.")
+    location: str = Field(default="UTC", description="Input timezone (IANA), e.g. Europe/Madrid.")
+    history_start: datetime | None = Field(
+        default=None,
+        alias="historyStart",
+        description="Optional expanded history start datetime for larger baseline/backfill windows.",
+    )
+    aggregation: TimeAggregation = Field(
+        default=TimeAggregation.NONE,
+        description="Output aggregation level for snapshot results.",
+    )
+    types: list[str] = Field(
+        default_factory=list,
+        description="Optional measurement filters. Empty means all fields.",
+    )
+    playback_step: PlaybackStep = Field(
+        default=PlaybackStep.HOURLY,
+        alias="playbackStep",
+        description="Requested playback step. May be upshifted automatically for large ranges.",
+    )
 
 
 class QueryJobCreatedResponse(BaseModel):

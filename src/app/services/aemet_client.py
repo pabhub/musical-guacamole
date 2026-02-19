@@ -265,6 +265,7 @@ class AemetClient:
             wait_for_rate_limit = self.__class__._rate_limited_until_monotonic - now
             wait_for = max(wait_for_min_interval, wait_for_rate_limit)
             if wait_for > 0:
+                logger.debug("Throttling AEMET request for %.2fs before GET %s", wait_for, url)
                 time.sleep(wait_for)
             response = client.get(url, **kwargs)
             completed_at = time.monotonic()
@@ -274,6 +275,11 @@ class AemetClient:
                 cooldown_until = completed_at + retry_after
                 if cooldown_until > self.__class__._rate_limited_until_monotonic:
                     self.__class__._rate_limited_until_monotonic = cooldown_until
+                logger.warning(
+                    "AEMET responded with HTTP 429; applying cooldown %.2fs for URL %s",
+                    retry_after,
+                    url,
+                )
             return response
 
     def _retry_after_seconds(self, response: httpx.Response) -> float:

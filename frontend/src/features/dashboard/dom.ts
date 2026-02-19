@@ -50,14 +50,13 @@ export type DashboardDomElements = {
   timeframeRunBtn: HTMLButtonElement;
   timeframeStatusEl: HTMLParagraphElement;
   timeframeCardsEl: HTMLDivElement;
-  timeframePeriodHeaderEl: HTMLTableCellElement;
-  timeframeBodyEl: HTMLTableSectionElement;
   timeframeComparisonEl: HTMLDivElement;
   timeframeGenerationEl: HTMLParagraphElement;
   toggleTablesButton: HTMLButtonElement;
   tablesPanelEl: HTMLDivElement;
   exportCsvButton: HTMLButtonElement;
   exportParquetButton: HTMLButtonElement;
+  exportPdfButton: HTMLButtonElement;
   authUserEl: HTMLSpanElement;
   authLogoutBtn: HTMLButtonElement;
 };
@@ -113,14 +112,13 @@ export function getDashboardDomElements(): DashboardDomElements {
     timeframeRunBtn: requiredElement<HTMLButtonElement>("timeframe-run"),
     timeframeStatusEl: requiredElement<HTMLParagraphElement>("timeframe-status"),
     timeframeCardsEl: requiredElement<HTMLDivElement>("timeframe-cards"),
-    timeframePeriodHeaderEl: requiredElement<HTMLTableCellElement>("timeframe-period-column"),
-    timeframeBodyEl: requiredElement<HTMLTableSectionElement>("timeframe-output"),
     timeframeComparisonEl: requiredElement<HTMLDivElement>("timeframe-comparison"),
     timeframeGenerationEl: requiredElement<HTMLParagraphElement>("generation-summary"),
     toggleTablesButton: requiredElement<HTMLButtonElement>("toggle-tables"),
     tablesPanelEl: requiredElement<HTMLDivElement>("tables-panel"),
     exportCsvButton: requiredElement<HTMLButtonElement>("export-csv"),
     exportParquetButton: requiredElement<HTMLButtonElement>("export-parquet"),
+    exportPdfButton: requiredElement<HTMLButtonElement>("export-pdf"),
     authUserEl: requiredElement<HTMLSpanElement>("auth-user"),
     authLogoutBtn: requiredElement<HTMLButtonElement>("auth-logout"),
   };

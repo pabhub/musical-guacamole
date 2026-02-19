@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 import json
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from app.models import SourceMeasurement, StationCatalogItem
+
+logger = logging.getLogger(__name__)
 
 
 class SQLiteRepository:
@@ -20,6 +23,7 @@ class SQLiteRepository:
         else:
             self.db_path = parsed.path.lstrip("/") or "aemet_cache.db"
 
+        logger.info("Initializing SQLite repository path=%s", self.db_path)
         self._initialize()
 
     def _new_connection(self) -> sqlite3.Connection:
@@ -188,6 +192,13 @@ class SQLiteRepository:
     ) -> None:
         now_utc = datetime.utcnow().isoformat()
         direction_checked = 1
+        logger.debug(
+            "Upsert measurements station=%s rows=%d start=%s end=%s",
+            station_id,
+            len(rows),
+            start_utc.isoformat(),
+            end_utc.isoformat(),
+        )
         with self._write_connection() as conn:
             conn.executemany(
                 """
@@ -381,6 +392,7 @@ class SQLiteRepository:
 
     def upsert_station_catalog(self, rows: list[StationCatalogItem]) -> datetime:
         now_utc = datetime.now(timezone.utc)
+        logger.debug("Upsert station catalog rows=%d", len(rows))
         with self._write_connection() as conn:
             conn.executemany(
                 """
@@ -538,6 +550,13 @@ class SQLiteRepository:
 
     def upsert_analysis_query_job(self, payload: dict[str, object]) -> None:
         now_utc = datetime.now(timezone.utc).isoformat()
+        logger.debug(
+            "Upsert query job id=%s status=%s completed_windows=%s total_windows=%s",
+            payload.get("job_id"),
+            payload.get("status"),
+            payload.get("completed_windows"),
+            payload.get("total_windows"),
+        )
         created_at = str(payload.get("created_at_utc") or now_utc)
         windows_json = payload.get("windows_json", "[]")
         if isinstance(windows_json, list):

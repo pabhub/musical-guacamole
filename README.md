@@ -27,9 +27,17 @@ src/
     │   ├── aemet_client.py     # upstream API client
     │   └── repository.py       # SQLite persistence
     │   ├── antarctic_service.py# service facade
-    │   └── antarctic/          # split domain logic (stations/data/analysis)
+    │   └── antarctic/
+    │       ├── stations.py         # station catalog/selection constraints
+    │       ├── data.py             # cache-first data loading + aggregation
+    │       ├── analysis.py         # bootstrap + station feasibility snapshots
+    │       ├── playback.py         # playback facade/orchestrator
+    │       ├── playback_query_jobs.py  # async month-window job orchestration
+    │       ├── playback_frames.py      # playback frame generation + step logic
+    │       └── playback_timeframes.py  # timeframe analytics + wind/generation math
     ├── api/
     │   ├── dependencies.py     # DI and compliance header helpers
+    │   ├── route_utils.py      # shared route parsing + error mapping helpers
     │   └── routes/             # split HTTP route modules (pages/metadata/analysis/data)
     └── utils/
         └── dates.py            # generic date-window helpers
@@ -63,6 +71,7 @@ frontend/src/
 ├── core/
 │   ├── api.ts                  # fetch/auth/timezone helpers
 │   ├── dom.ts                  # required DOM element resolver
+│   ├── logger.ts               # frontend troubleshooting logger
 │   ├── navigation.ts           # login redirect/next-path helpers
 │   ├── settings.ts             # shared localStorage app settings (timezone/wind-farm/auth user)
 │   └── types.ts                # frontend API types
@@ -77,7 +86,7 @@ frontend/src/
     │   ├── actions_types.ts    # shared action context types
     │   ├── analysis_job.ts     # cache-first query job workflow
     │   ├── bootstrap_flow.ts   # startup bootstrap workflow
-    │   ├── export_actions.ts   # CSV/Parquet export workflow
+    │   ├── export_actions.ts   # CSV/Parquet data exports + PDF report export workflow
     │   ├── dashboard_state.ts  # dashboard mutable state model
     │   ├── renderers.ts        # KPI/tables rendering
     │   ├── sections.ts         # UI section visibility/loading helpers
@@ -91,7 +100,9 @@ frontend/src/
     │   └── stations.ts         # station label mapping
     ├── overlay.ts              # leaflet station + playback overlays
     ├── playback.ts             # playback controller
-    ├── timeframes.ts           # timeframe tables/cards/comparison
+    ├── timeframes.ts           # timeframe tables/cards facade
+    ├── timeframes_summary.ts   # shared timeframe summary/decision helpers
+    ├── timeframes_comparison.ts# loaded-years comparison renderer
     └── wind_rose.ts            # wind compass chart
 ```
 
@@ -119,7 +130,7 @@ frontend/src/
 - New playback and timeframe endpoints provide synchronized spatiotemporal analysis.
 - SQLite persistence and fetch-window reuse are central: once loaded, windows are reused and upstream calls are skipped.
 - UI/UX redesigned for analyst decision support:
-  - station overlay map (3 active Antarctic IDs)
+  - station overlay map (2 active meteorological Antarctic IDs)
   - single-station selection from list or map
   - query progress bar (windows/calls/frames)
   - playable wind overlays (direction arrow, trail, optional temperature/pressure overlays)
@@ -127,6 +138,7 @@ frontend/src/
   - wind timeline, weather timeline, 16-sector wind rose
   - timeframe analysis + compare mode
   - simulated wind farm expected generation (configured in `/config`)
+  - one-click PDF export of the “Analysis & Recommendations Report” (A4 print-safe layout with metadata/sources/timeframe context)
   - AEMET/OSM attribution block
 
 ## API overview
@@ -218,6 +230,11 @@ For long timeframe/compare ranges, backend fetches missing data in sequential 30
 - Supports `location` and `aggregation` (`none|hourly|daily|monthly`).
 - Used by frontend export buttons in Raw Data Tables.
 
+PDF report export note:
+
+- The Analysis & Recommendations PDF download is generated client-side from the rendered report card (no separate backend PDF endpoint required).
+- Export includes generation date/time, timezone, selected station, loaded timeframe, sources and legal attribution, and the visible analysis sections in print-safe A4 format.
+
 The following legacy endpoints are intentionally not exposed anymore:
 
 - `/api/analysis/feasibility`
@@ -282,6 +299,7 @@ AEMET_MIN_REQUEST_INTERVAL_SECONDS=2
 API_AUTH_USERNAME=analyst
 API_AUTH_PASSWORD=change_this_password
 JWT_SECRET_KEY=change_this_secret_key
+LOG_LEVEL=INFO
 ```
 
 Install + build:
@@ -346,6 +364,39 @@ source .venv/bin/activate
 pytest -q
 npm --prefix frontend run build
 ```
+
+Run with coverage:
+
+```bash
+source .venv/bin/activate
+pytest --cov=app --cov-report=term-missing
+```
+
+## Logging and troubleshooting
+
+- Backend logs include:
+  - request lifecycle logs (`request.start`, `request.end`, `request.error`)
+  - `X-Request-ID` response header for correlation
+  - endpoint/service warnings on upstream AEMET failures and 429 cooldowns
+- Backend log level is controlled by `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
+- Frontend troubleshooting logs can be enabled in browser console:
+
+```js
+localStorage.setItem("aemet.debug_logging", "1"); location.reload();
+```
+
+Disable:
+
+```js
+localStorage.setItem("aemet.debug_logging", "0"); location.reload();
+```
+
+## Scalability and maintainability notes
+
+- API dependencies are cached (`Settings`, repository, AEMET client, auth service, Antarctic service) to avoid per-request re-instantiation overhead.
+- Data retrieval remains month-window cache-first with persisted fetch windows and measurement upserts.
+- Route-level datetime/timezone parsing and service-error mapping are centralized in `app/api/route_utils.py` to reduce duplication and improve consistency.
+- Frontend and backend remain split into domain modules to keep refactors localized.
 
 ## Legal and attribution compliance
 
