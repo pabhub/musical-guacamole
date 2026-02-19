@@ -29,19 +29,45 @@ def _seed_from_bundled(target_path: str) -> None:
         return
     if os.path.exists(target_path):
         return
+        
+    logger.error("SEED_DEBUG: Starting cache DB seed. cwd=%s target=%s", os.getcwd(), target_path)
+    
     for candidate in _BUNDLED_DB_CANDIDATES:
-        if not candidate.is_file():
+        exists = candidate.exists()
+        is_file = candidate.is_file()
+        logger.error("SEED_DEBUG: Checking candidate %s exists=%s is_file=%s", candidate, exists, is_file)
+        if not is_file:
             continue
         try:
-            logger.info("Seeding cache DB from bundled %s → %s", candidate, target_path)
+            logger.error("SEED_DEBUG: Decompressing %s to %s", candidate, target_path)
             with gzip.open(candidate, "rb") as f_in:
                 with open(target_path, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
+            
+            logger.error("SEED_DEBUG: Success! File size is %d bytes", os.path.getsize(target_path))
             return
         except Exception as exc:
-            logger.warning("Failed to decompress bundled DB %s: %s", candidate, str(exc))
+            logger.error("SEED_DEBUG: Failed to decompress bundled DB %s: %s", candidate, str(exc))
             if os.path.exists(target_path):
                 os.remove(target_path)
+                
+    logger.error("SEED_DEBUG: Specific candidates failed. Falling back to recursive search in %s", os.getcwd())
+    for root, _, files in os.walk(os.getcwd()):
+        if "aemet_cache.db.gz" in files:
+            found_path = Path(root) / "aemet_cache.db.gz"
+            logger.error("SEED_DEBUG: Found fallback candidate at %s", found_path)
+            try:
+                with gzip.open(found_path, "rb") as f_in:
+                    with open(target_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                logger.error("SEED_DEBUG: Success from fallback! File size is %d bytes", os.path.getsize(target_path))
+                return
+            except Exception as exc:
+                logger.error("SEED_DEBUG: Failed fallback %s: %s", found_path, str(exc))
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+
+    logger.error("SEED_DEBUG: All candidates and fallback search failed.")
 
 
 class SQLiteRepository:
