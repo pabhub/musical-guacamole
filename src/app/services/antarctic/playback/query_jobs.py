@@ -188,7 +188,7 @@ class PlaybackQueryJobsMixin:
                 continue
 
             attempts = int(window.get("attempts", 0))
-            max_attempts = 1 if max_windows is not None else 4
+            max_attempts = 4
             success = False
             while attempts < max_attempts and not success:
                 attempts += 1
@@ -242,8 +242,6 @@ class PlaybackQueryJobsMixin:
                             )
                         self._update_query_job_progress(payload)
                         self.repository.upsert_analysis_query_job(payload)
-                        if max_windows is not None:
-                            return
                         if attempts < max_attempts:
                             time.sleep(limiter_seconds)
                             continue
