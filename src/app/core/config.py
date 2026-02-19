@@ -65,7 +65,19 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _default_database_url() -> str:
-    # Vercel serverless filesystem is read-only except /tmp.
+    # Priority 1: Turso env vars (set via Vercel dashboard integration)
+    turso_url = os.getenv("TURSO_DATABASE_URL")
+    turso_token = os.getenv("TURSO_AUTH_TOKEN")
+    if turso_url:
+        if turso_token:
+            sep = "&" if "?" in turso_url else "?"
+            return f"{turso_url}{sep}authToken={turso_token}"
+        return turso_url
+    # Priority 2: Generic DATABASE_URL
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        return db_url
+    # Priority 3: Local file defaults
     if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
         return "file:///tmp/aemet_cache.db"
     return "file:aemet_cache.db"
@@ -99,7 +111,7 @@ def get_settings() -> Settings:
         os.getenv("AEMET_RETRY_AFTER_CAP_SECONDS", str(min_request_interval_seconds))
     )
     default_background_jobs = not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
-    raw_db_url = os.getenv("DATABASE_URL", _default_database_url())
+    raw_db_url = _default_database_url()
     return Settings(
         aemet_api_key=os.getenv("AEMET_API_KEY", ""),
         database_url=_normalize_database_url(raw_db_url),
