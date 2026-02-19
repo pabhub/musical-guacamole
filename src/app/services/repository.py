@@ -13,20 +13,27 @@ from app.models import SourceMeasurement, StationCatalogItem
 
 logger = logging.getLogger(__name__)
 
+# Store cold-start seed logs in memory so we can read them via a debug API endpoint
+seed_debug_logs: list[str] = []
+
+def _log_seed(msg: str) -> None:
+    logger.info(msg)
+    seed_debug_logs.append(msg)
 
 def _seed_from_blob_storage(target_path: str) -> None:
     """Download the pre-built cache DB from Vercel Blob Storage to the writable target path on Vercel."""
     if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
         return
     if os.path.exists(target_path):
+        _log_seed(f"SEED: target_path {target_path} already exists, skipping download.")
         return
         
     blob_url = os.environ.get("CACHE_DB_BLOB_URL")
     if not blob_url:
-        logger.warning("Vercel cold start but CACHE_DB_BLOB_URL is missing. Starting with an empty cache.")
+        _log_seed("SEED: Vercel cold start but CACHE_DB_BLOB_URL is missing. Starting with an empty cache.")
         return
         
-    logger.info("SEED: Starting cache DB download. target=%s", target_path)
+    _log_seed(f"SEED: Starting cache DB download. target={target_path}, url={blob_url}")
     
     try:
         # Stream the DB to disk to avoid loading 150MB into memory
@@ -36,9 +43,10 @@ def _seed_from_blob_storage(target_path: str) -> None:
                 for chunk in response.iter_bytes(chunk_size=1024 * 1024):
                     f_out.write(chunk)
         
-        logger.info("SEED: Success! File size is %d bytes", os.path.getsize(target_path))
+        size = os.path.getsize(target_path)
+        _log_seed(f"SEED: Success! File size is {size} bytes")
     except Exception as exc:
-        logger.error("SEED: Failed to download DB from Blob Storage: %s", str(exc))
+        _log_seed(f"SEED: Failed to download DB from Blob Storage: {str(exc)}")
         if os.path.exists(target_path):
             os.remove(target_path)
 

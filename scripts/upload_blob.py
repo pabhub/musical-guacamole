@@ -29,8 +29,8 @@ async def main():
     
     with open(db_path, "rb") as f:
         resp = put(
-            pathname="aemet_cache.db",
-            body=f.read(),
+            path="aemet_cache.db",
+            data=f.read(),
             options={"access": "public", "addRandomSuffix": False},
             token=token
         )
