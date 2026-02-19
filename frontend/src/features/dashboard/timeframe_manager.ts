@@ -1,6 +1,6 @@
 import { fetchJson, formatNumber, toApiDateTime } from "../../core/api.js";
 import { FeasibilitySnapshotResponse, TimeframeAnalyticsResponse, WindFarmParams } from "../../core/types.js";
-import { renderComparison, renderTimeframeCards } from "../timeframes.js";
+import { renderComparison, renderTimeframeCards } from "../timeframes/index.js";
 import { DashboardCharts } from "./charts.js";
 import { yearInConfiguredZone } from "./date_ranges.js";
 import { timeframeQueryParams } from "./timeframe_query.js";
@@ -32,7 +32,7 @@ type TimeRange = {
   groupBy: "month" | "season";
 };
 
-function extractYearsFromPayload(payload: TimeframeAnalyticsResponse): number[] {
+function extractYearsFromPayload(payload: TimeframeAnalyticsResponse, timeZone: string): number[] {
   const years = new Set<number>();
   for (const bucket of payload.buckets) {
     const labelYearMatch = bucket.label.match(/^(\d{4})-/);
@@ -40,8 +40,8 @@ function extractYearsFromPayload(payload: TimeframeAnalyticsResponse): number[] 
       years.add(Number.parseInt(labelYearMatch[1], 10));
       continue;
     }
-    const parsed = new Date(bucket.start);
-    if (!Number.isNaN(parsed.getTime())) years.add(parsed.getUTCFullYear());
+    const year = yearInConfiguredZone(bucket.start, timeZone);
+    if (year != null) years.add(year);
   }
   return Array.from(years)
     .filter((year) => Number.isFinite(year))
@@ -108,7 +108,7 @@ export class TimeframeManager {
   }
 
   private mergedYears(payload: TimeframeAnalyticsResponse): number[] {
-    const payloadYears = extractYearsFromPayload(payload);
+    const payloadYears = extractYearsFromPayload(payload, this.deps.configuredInputTimeZone());
     const merged = new Set<number>([...this.availableYears, ...payloadYears]);
     return Array.from(merged)
       .filter((year) => Number.isFinite(year))

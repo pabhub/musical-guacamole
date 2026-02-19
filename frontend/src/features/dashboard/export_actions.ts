@@ -65,8 +65,8 @@ function renderPdfDocument(params: {
   stationName: string;
   loadedStart: string;
   loadedEnd: string;
-  checkedAtUtc: string;
-  latestObservationUtc: string;
+  checkedAt: string;
+  latestObservation: string;
   historyYears: number;
   groupingLabel: string;
   selectedMeasurements: string;
@@ -81,8 +81,8 @@ function renderPdfDocument(params: {
     stationName,
     loadedStart,
     loadedEnd,
-    checkedAtUtc,
-    latestObservationUtc,
+    checkedAt,
+    latestObservation,
     historyYears,
     groupingLabel,
     selectedMeasurements,
@@ -369,7 +369,7 @@ function renderPdfDocument(params: {
         </article>
         <article class="pdf-meta-item">
           <h4>Observation metadata</h4>
-          <p>Latest UTC: ${escapeHtml(latestObservationUtc)} · Checked UTC: ${escapeHtml(checkedAtUtc)}</p>
+          <p>Latest: ${escapeHtml(latestObservation)} · Checked: ${escapeHtml(checkedAt)}</p>
         </article>
         <article class="pdf-meta-item">
           <h4>Data sources</h4>
@@ -396,6 +396,17 @@ function renderPdfDocument(params: {
       <p>Attribution: Información elaborada por la Agencia Estatal de Meteorología (AEMET) · Fuente: AEMET · © AEMET.</p>
     </footer>
   </main>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        window.focus();
+        window.print();
+      }, 250);
+    });
+    window.addEventListener("afterprint", function () {
+      try { window.close(); } catch (err) { /* no-op */ }
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -434,78 +445,75 @@ export async function downloadExport(ctx: DashboardActionsContext, format: Expor
 }
 
 export async function downloadAnalysisPdf(ctx: DashboardActionsContext): Promise<void> {
-  if (!ctx.ensureAuthenticated()) return;
-  const snapshot = ctx.state.snapshotState;
-  if (!snapshot) {
-    ctx.setError("Load station baseline before downloading the PDF report.");
-    return;
+  try {
+    if (!ctx.ensureAuthenticated()) return;
+    const snapshot = ctx.state.snapshotState;
+    if (!snapshot) {
+      ctx.setError("Load station baseline before downloading the PDF report.");
+      return;
+    }
+    const reportCard = document.getElementById("decision-card");
+    if (!(reportCard instanceof HTMLElement) || reportCard.classList.contains("hidden")) {
+      ctx.setError("Analysis report is not available yet. Run station analysis first.");
+      return;
+    }
+
+    const selectedStation = snapshot.stations.find((station) => station.stationId === snapshot.selectedStationId) ?? null;
+    if (!selectedStation) {
+      ctx.setError("Selected station report is unavailable. Reload the station and try again.");
+      return;
+    }
+
+    const groupingElement = document.getElementById("timeframe-grouping");
+    const groupingLabel =
+      groupingElement instanceof HTMLSelectElement && groupingElement.value === "season"
+        ? "Season"
+        : "Month";
+    const timezone = ctx.configuredInputTimeZone();
+    const generatedAtIso = new Date().toISOString();
+    const generatedAtLabel = formatDateTime(generatedAtIso, timezone);
+    const stationName = stationDisplayName(snapshot.selectedStationId, snapshot.selectedStationName);
+    const title = `Antarctic Wind Analysis Report · ${stationName}`;
+    const fileStem = `${sanitizeFileToken(stationName)}-analysis-report-${generatedAtIso.slice(0, 10)}`;
+    const selectedMeasurements = selectedMeasurementTypes().join(", ") || "speed, direction, temperature, pressure";
+    const availableStations = snapshot.stations
+      .map((station) => stationDisplayName(station.stationId, station.stationName))
+      .join(", ");
+
+    const reportClone = cloneReportCardForPdf(reportCard);
+    const html = renderPdfDocument({
+      title,
+      generatedAt: generatedAtLabel,
+      timezone,
+      stationName,
+      loadedStart: formatDateTime(snapshot.requestedStart, timezone),
+      loadedEnd: formatDateTime(snapshot.effectiveEnd, timezone),
+      checkedAt: formatDateTime(snapshot.checked_at_utc, timezone),
+      latestObservation: formatDateTime(selectedStation.summary.latestObservationUtc, timezone),
+      historyYears: ctx.selectedHistoryYears(),
+      groupingLabel,
+      selectedMeasurements,
+      availableStations,
+      effectiveEndReason: snapshot.effectiveEndReason || "Latest available station observation bound.",
+      reportHtml: reportClone.outerHTML,
+    });
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const printWindow = window.open(objectUrl, "_blank", "width=1200,height=900");
+    if (!printWindow) {
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+      anchor.download = `${fileStem}.html`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 120_000);
+    ctx.setError(null);
+  } catch (error) {
+    ctx.setError(error instanceof Error ? error.message : "Unable to open PDF export preview.");
   }
-  const reportCard = document.getElementById("decision-card");
-  if (!(reportCard instanceof HTMLElement) || reportCard.classList.contains("hidden")) {
-    ctx.setError("Analysis report is not available yet. Run station analysis first.");
-    return;
-  }
-
-  const selectedStation = snapshot.stations.find((station) => station.stationId === snapshot.selectedStationId) ?? null;
-  if (!selectedStation) {
-    ctx.setError("Selected station report is unavailable. Reload the station and try again.");
-    return;
-  }
-
-  const groupingElement = document.getElementById("timeframe-grouping");
-  const groupingLabel =
-    groupingElement instanceof HTMLSelectElement && groupingElement.value === "season"
-      ? "Season"
-      : "Month";
-  const timezone = ctx.configuredInputTimeZone();
-  const generatedAtIso = new Date().toISOString();
-  const generatedAtLabel = formatDateTime(generatedAtIso, timezone);
-  const stationName = stationDisplayName(snapshot.selectedStationId, snapshot.selectedStationName);
-  const title = `Antarctic Wind Analysis Report · ${stationName}`;
-  const fileStem = `${sanitizeFileToken(stationName)}-analysis-report-${generatedAtIso.slice(0, 10)}`;
-  const selectedMeasurements = selectedMeasurementTypes().join(", ") || "speed, direction, temperature, pressure";
-  const availableStations = snapshot.stations
-    .map((station) => stationDisplayName(station.stationId, station.stationName))
-    .join(", ");
-
-  const reportClone = cloneReportCardForPdf(reportCard);
-  const html = renderPdfDocument({
-    title,
-    generatedAt: generatedAtLabel,
-    timezone,
-    stationName,
-    loadedStart: formatDateTime(snapshot.requestedStart, timezone),
-    loadedEnd: formatDateTime(snapshot.effectiveEnd, timezone),
-    checkedAtUtc: formatDateTime(snapshot.checked_at_utc, "UTC"),
-    latestObservationUtc: formatDateTime(selectedStation.summary.latestObservationUtc, "UTC"),
-    historyYears: ctx.selectedHistoryYears(),
-    groupingLabel,
-    selectedMeasurements,
-    availableStations,
-    effectiveEndReason: snapshot.effectiveEndReason || "Latest available station observation bound.",
-    reportHtml: reportClone.outerHTML,
-  });
-
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
-  if (!printWindow) {
-    ctx.setError("Unable to open PDF preview window (popup blocked). Allow popups and retry.");
-    return;
-  }
-
-  ctx.setError(null);
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.document.title = fileStem;
-  printWindow.addEventListener(
-    "afterprint",
-    () => {
-      printWindow.close();
-    },
-    { once: true },
-  );
-  printWindow.setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-  }, 350);
 }

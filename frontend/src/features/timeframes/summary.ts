@@ -1,5 +1,5 @@
-import { formatNumber } from "../core/api.js";
-import { TimeframeAnalyticsResponse } from "../core/types.js";
+import { browserTimeZone, formatNumber, isValidTimeZone } from "../../core/api.js";
+import { TimeframeAnalyticsResponse } from "../../core/types.js";
 
 export type SummaryStats = {
   bucketCount: number;
@@ -27,6 +27,37 @@ export type YearSummary = {
 };
 
 export type YearBucket = TimeframeAnalyticsResponse["buckets"][number] & { __year: number; __key: string };
+
+const inputTimezoneStorageKey = "aemet.input_timezone";
+
+function resolvedTimeZone(fallback = "UTC"): string {
+  const stored = localStorage.getItem(inputTimezoneStorageKey)?.trim();
+  if (stored && isValidTimeZone(stored)) return stored;
+  const browser = browserTimeZone();
+  return isValidTimeZone(browser) ? browser : fallback;
+}
+
+function yearAndMonthInConfiguredZone(value: Date): { year: number; month: number } {
+  const timezone = resolvedTimeZone();
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+    }).formatToParts(value);
+    const year = Number.parseInt(parts.find((part) => part.type === "year")?.value ?? "", 10);
+    const month = Number.parseInt(parts.find((part) => part.type === "month")?.value ?? "", 10);
+    if (Number.isFinite(year) && Number.isFinite(month)) {
+      return { year, month };
+    }
+  } catch {
+    // fallback below
+  }
+  return {
+    year: value.getUTCFullYear(),
+    month: value.getUTCMonth() + 1,
+  };
+}
 
 function weightedAverage(values: Array<number | null>, weights: number[]): number | null {
   let sum = 0;
@@ -131,9 +162,10 @@ export function parseYearAndKey(
     }
     const parsedStart = new Date(bucket.start);
     if (!Number.isNaN(parsedStart.getTime())) {
+      const mapped = yearAndMonthInConfiguredZone(parsedStart);
       return {
-        year: parsedStart.getUTCFullYear(),
-        key: String(parsedStart.getUTCMonth() + 1).padStart(2, "0"),
+        year: mapped.year,
+        key: String(mapped.month).padStart(2, "0"),
       };
     }
     return { year: null, key: bucket.label };

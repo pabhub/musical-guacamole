@@ -6,7 +6,30 @@ export function analysisReportTemplate(): string {
           <h2>Analysis & Recommendations Report</h2>
           <span id="decision-badge" class="decision-badge">Screening</span>
         </div>
-        <p id="decision-updated" class="muted"></p>
+        <div class="analysis-head-actions">
+          <p id="decision-updated" class="muted"></p>
+          <button type="button" id="export-pdf" class="secondary icon-btn" title="Download Analysis Report PDF" aria-label="Download Analysis Report PDF">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M8 3h6l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M13 4.5V9h4.5M8 14h4M8 17h8M11 12v6m0 0-2-2m2 2 2-2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="sr-only">Download Analysis Report PDF</span>
+          </button>
+        </div>
       </div>
 
       <section class="analysis-block">

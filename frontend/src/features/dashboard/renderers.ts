@@ -24,6 +24,7 @@ export function renderMetrics(
   metricsGridEl.innerHTML = "";
   const selected = snapshot.stations.find((station) => station.stationId === snapshot.selectedStationId);
   if (!selected) return;
+  const displayTimeZone = snapshot.timezone_output || snapshot.timezone_input || "UTC";
   const aggregationLabel =
     snapshot.aggregation === "none"
       ? "10-minute source"
@@ -44,7 +45,7 @@ export function renderMetrics(
     { label: "Temp Range", value: `${formatNumber(selected.summary.minTemperature)} to ${formatNumber(selected.summary.maxTemperature)} ºC` },
     { label: "Dominant Heading (toward)", value: headingLabel(selected.summary.prevailingDirection) },
     { label: "Avg Pressure", value: `${formatNumber(selected.summary.avgPressure)} hPa` },
-    { label: "Latest UTC", value: formatDateTime(selected.summary.latestObservationUtc, "UTC") },
+    { label: `Latest (${displayTimeZone})`, value: formatDateTime(selected.summary.latestObservationUtc, displayTimeZone) },
     { label: "Snapshot interval", value: aggregationLabel },
     { label: "Station", value: stationDisplayName(snapshot.selectedStationId, snapshot.selectedStationName) },
   ];
@@ -67,9 +68,10 @@ export function renderDecisionGuidance(
   },
 ): void {
   const { decisionUpdatedEl, decisionBadgeEl, decisionWindEl, decisionQualityEl, decisionRiskEl } = elements;
+  const displayTimeZone = snapshot.timezone_output || snapshot.timezone_input || "UTC";
   const selected = snapshot.stations.find((station) => station.stationId === snapshot.selectedStationId);
   if (!selected) {
-    decisionUpdatedEl.textContent = "Latest UTC n/a";
+    decisionUpdatedEl.textContent = `Latest (${displayTimeZone}) n/a`;
     decisionBadgeEl.className = "decision-badge";
     decisionBadgeEl.textContent = "Screening";
     decisionWindEl.textContent = "No data yet.";
@@ -127,7 +129,7 @@ export function renderDecisionGuidance(
 
   decisionBadgeEl.className = badgeClass;
   decisionBadgeEl.textContent = badgeText;
-  decisionUpdatedEl.textContent = `Latest UTC ${formatDateTime(latestUtc, "UTC")}.`;
+  decisionUpdatedEl.textContent = `Latest (${displayTimeZone}) ${formatDateTime(latestUtc, displayTimeZone)}.`;
   decisionWindEl.textContent = windSignal;
   decisionQualityEl.textContent = quality;
   decisionRiskEl.textContent = riskParts.join(" ");
@@ -138,6 +140,7 @@ export function renderSummaryTable(
   summaryOutputEl: HTMLTableSectionElement,
 ): void {
   summaryOutputEl.innerHTML = "";
+  const displayTimeZone = snapshot.timezone_output || snapshot.timezone_input || "UTC";
   for (const station of snapshot.stations) {
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -150,7 +153,7 @@ export function renderSummaryTable(
       <td>${station.summary.hoursAbove5mps == null ? "n/a" : station.summary.hoursAbove5mps.toFixed(1)}</td>
       <td>${formatNumber(station.summary.avgTemperature)}</td>
       <td>${station.summary.estimatedWindPowerDensity == null ? "n/a" : station.summary.estimatedWindPowerDensity.toFixed(1)}</td>
-      <td>${formatDateTime(station.summary.latestObservationUtc, "UTC")}</td>
+      <td>${formatDateTime(station.summary.latestObservationUtc, displayTimeZone)}</td>
     `;
     summaryOutputEl.appendChild(row);
   }

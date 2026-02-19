@@ -5,27 +5,6 @@ export function rawTablesTemplate(): string {
         <h2>Raw Data Tables</h2>
         <div class="table-head-actions">
           <div class="export-icon-actions" aria-label="Download exports">
-            <button type="button" id="export-pdf" class="secondary icon-btn" title="Download Analysis Report PDF" aria-label="Download Analysis Report PDF">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M8 3h6l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M13 4.5V9h4.5M8 14h4M8 17h8M11 12v6m0 0-2-2m2 2 2-2"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              <span class="sr-only">Download Analysis Report PDF</span>
-            </button>
             <button type="button" id="export-csv" class="secondary icon-btn" title="Download CSV" aria-label="Download CSV">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -72,7 +51,7 @@ export function rawTablesTemplate(): string {
                   <th>Hours ≥ 5 m/s</th>
                   <th>Avg Temp</th>
                   <th>WPD Proxy</th>
-                  <th>Latest UTC</th>
+                  <th>Latest</th>
                 </tr>
               </thead>
               <tbody id="summary-output"></tbody>

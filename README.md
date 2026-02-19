@@ -1,297 +1,210 @@
 # GS Inima · Antarctic Wind Feasibility Dashboard
 
-Antarctic-focused FastAPI + TypeScript application for Business Development analysts evaluating wind-farm pre-feasibility with AEMET weather data.
+Antarctic-focused FastAPI + TypeScript app for Business Development analysts evaluating pre-feasibility of wind projects using AEMET data.
 
-## Scope
+## Final Status
 
-This app is intentionally constrained to AEMET Antarctic stations and the wind-feasibility screening workflow.
+- Scope is Antarctic-only.
+- Selectable stations are only:
+  - `89064` · Meteo Station Juan Carlos I
+  - `89070` · Meteo Station Gabriel de Castilla
+- Non-selectable stations are catalog metadata only:
+  - `89064R` supplemental
+  - `89064RA` historical archive
+- UI flow is production-ready:
+  - login
+  - station selection (map or selector)
+  - cache-first history load
+  - playback + charts + analysis report
+  - CSV/Parquet exports and PDF export from report header
+- API requests are month-windowed, cache-first, and rate-limit-aware.
+- Frontend datetime rendering uses the user-configured timezone across dashboard, charts, tables, and PDF export.
 
-## Codebase layout
+## Product Scope
 
-The backend now follows a `src` package structure with clear boundaries:
+This app is intentionally constrained to Antarctic wind-feasibility screening:
+
+- no generic national station workflow
+- no non-Antarctic endpoint dependence for core analytics
+- data retrieval compliant with AEMET one-month window limits
+
+## User Flow
+
+1. Authenticate on `/login`.
+2. Open dashboard `/`.
+3. Select one meteo station (`89064` or `89070`) from map or dropdown.
+4. Choose history window (`2`, `3`, `5`, `10` years).
+5. App runs a cache-first analysis job and loads missing month windows in background.
+6. Analyst reviews:
+   - wind playback overlay
+   - wind speed/weather trends
+   - wind direction compass
+   - analysis & recommendations report
+   - loaded-years comparison (month/season grouping)
+7. Export:
+   - CSV / Parquet from Raw Data Tables
+   - PDF from Analysis Report header
+
+## Codebase Layout
 
 ```text
 src/
-├── main.py                     # deployment shim entrypoint (re-exports app.main:app)
+├── main.py                          # deployment shim (re-exports app.main:app)
 └── app/
-    ├── main.py                 # FastAPI app wiring
+    ├── main.py                      # FastAPI app wiring + middleware
     ├── core/
-    │   ├── config.py           # settings/env loading
-    │   ├── exceptions.py       # custom exceptions
-    │   └── logging.py          # logging setup
+    │   ├── config.py                # settings/env loading (cached)
+    │   ├── exceptions.py            # custom exceptions
+    │   └── logging.py               # logging setup
     ├── models/
-    │   ├── station.py          # station/catalog/profile models
-    │   ├── measurement.py      # time-series/query response models
-    │   └── analysis.py         # feasibility snapshot models
+    │   ├── station.py               # station/catalog/profile models
+    │   ├── measurement.py           # time-series/query/export models
+    │   └── analysis.py              # analysis/playback/timeframe models
     ├── services/
-    │   ├── aemet_client.py     # upstream API client
-    │   └── repository.py       # SQLite persistence
-    │   ├── antarctic_service.py# service facade
+    │   ├── aemet_client.py          # AEMET client + throttling
+    │   ├── repository.py            # SQLite persistence
+    │   ├── antarctic_service.py     # service facade
     │   └── antarctic/
-    │       ├── stations.py         # station catalog/selection constraints
-    │       ├── data.py             # cache-first data loading + aggregation
-    │       ├── analysis.py         # bootstrap + station feasibility snapshots
-    │       ├── playback.py         # playback facade/orchestrator
-    │       ├── playback_query_jobs.py  # async month-window job orchestration
-    │       ├── playback_frames.py      # playback frame generation + step logic
-    │       └── playback_timeframes.py  # timeframe analytics + wind/generation math
+    │       ├── stations.py          # station catalog/selection constraints
+    │       ├── data.py              # cache-first retrieval + aggregation
+    │       ├── analysis.py          # bootstrap + snapshot summaries
+    │       └── playback/
+    │           ├── __init__.py      # playback facade
+    │           ├── query_jobs.py    # async month-window job orchestration
+    │           ├── frames.py        # playback frame generation
+    │           └── timeframes.py    # timeframe analytics + generation math
     ├── api/
-    │   ├── dependencies.py     # DI and compliance header helpers
-    │   ├── route_utils.py      # shared route parsing + error mapping helpers
-    │   └── routes/             # split HTTP route modules (pages/metadata/analysis/data)
+    │   ├── dependencies.py          # DI + compliance headers
+    │   ├── route_utils.py           # shared datetime/tz parsing + error mapping
+    │   └── routes/
+    │       ├── pages.py             # /, /login, /config
+    │       ├── auth.py              # JWT token + refresh
+    │       ├── metadata.py          # latest availability
+    │       ├── analysis.py          # bootstrap/jobs/playback/timeframes
+    │       └── data.py              # CSV/Parquet exports
     └── utils/
-        └── dates.py            # generic date-window helpers
+        └── dates.py                 # date-window helpers
 ```
-
-A root `main.py` shim is also included for platforms that only auto-detect top-level entrypoints.
-
-```text
-main.py                         # root deployment shim (re-exports app.main:app)
-```
-
-Frontend files are also split by responsibility:
 
 ```text
 frontend/src/
-├── app.ts                      # dashboard composition/wiring entrypoint
-├── login.ts                    # login entrypoint
-├── config.ts                   # config entrypoint
-├── pages/                      # thin HTML shells that host #app-root
-├── styles/                     # shared CSS
-├── components/                 # page/section templates (markup as components)
-│   ├── render.ts               # root renderer
-│   ├── layout/
-│   │   ├── top_nav.ts          # reusable nav template
-│   │   └── footer.ts           # reusable compliance footer template
-│   ├── dashboard/              # dashboard section templates
-│   ├── config/
-│   │   └── page.ts             # config page template
-│   └── login/
-│       └── page.ts             # login page template
+├── app.ts                           # dashboard entrypoint
+├── login.ts                         # login entrypoint
+├── config.ts                        # config entrypoint
+├── pages/                           # HTML shells
+├── styles/style.css                 # shared styles
+├── components/                      # page/section templates
+│   ├── layout/                      # top nav + footer
+│   ├── dashboard/                   # dashboard sections
+│   ├── config/page.ts
+│   └── login/page.ts
 ├── core/
-│   ├── api.ts                  # fetch/auth/timezone helpers
-│   ├── dom.ts                  # required DOM element resolver
-│   ├── logger.ts               # frontend troubleshooting logger
-│   ├── navigation.ts           # login redirect/next-path helpers
-│   ├── settings.ts             # shared localStorage app settings (timezone/wind-farm/auth user)
-│   └── types.ts                # frontend API types
+│   ├── api.ts                       # fetch/auth/date formatting helpers
+│   ├── settings.ts                  # localStorage config (timezone/wind farm)
+│   ├── logger.ts                    # frontend debug logging helper
+│   ├── types.ts                     # API contracts
+│   ├── dom.ts
+│   └── navigation.ts
 └── features/
-    ├── dashboard/
-    │   ├── dom.ts              # typed DOM element registry
-    │   ├── charts.ts           # chart facade
-    │   ├── chart_data.ts       # chart aggregation/time-axis helpers
-    │   ├── chart_core.ts       # wind + weather chart renderers
-    │   ├── chart_timeframe.ts  # timeframe trend chart renderer
-    │   ├── dashboard_actions.ts# action exports (bootstrap/query/export)
-    │   ├── actions_types.ts    # shared action context types
-    │   ├── analysis_job.ts     # cache-first query job workflow
-    │   ├── bootstrap_flow.ts   # startup bootstrap workflow
-    │   ├── export_actions.ts   # CSV/Parquet data exports + PDF report export workflow
-    │   ├── dashboard_state.ts  # dashboard mutable state model
-    │   ├── renderers.ts        # KPI/tables rendering
-    │   ├── sections.ts         # UI section visibility/loading helpers
-    │   ├── timeframe_manager.ts# timeframe options + analytics loader
-    │   ├── playback_manager.ts # playback loading + control bindings
-    │   ├── history.ts          # baseline window derivation helpers
-    │   ├── progress.ts         # progress bar rendering
-    │   ├── playback_controls.ts# play/pause/speed control helpers
-    │   ├── date_ranges.ts      # season/year/custom range logic
-    │   ├── measurement_types.ts# measurement payload selection helper
-    │   └── stations.ts         # station label mapping
-    ├── overlay.ts              # leaflet station + playback overlays
-    ├── playback.ts             # playback controller
-    ├── timeframes.ts           # timeframe tables/cards facade
-    ├── timeframes_summary.ts   # shared timeframe summary/decision helpers
-    ├── timeframes_comparison.ts# loaded-years comparison renderer
-    └── wind_rose.ts            # wind compass chart
+    ├── dashboard/                   # dashboard workflows/state/render/actions
+    ├── overlay.ts                   # Leaflet map overlays
+    ├── playback.ts                  # playback controller
+    ├── timeframes/
+    │   ├── index.ts                 # timeframe cards/table facade
+    │   ├── summary.ts               # summary/decision helpers
+    │   └── comparison.ts            # loaded-years comparison renderer
+    └── wind_rose.ts                 # compass chart
 ```
 
-### Selectable meteorological stations (UI selector)
+## API Overview
 
-- `89064` · Meteo Station Juan Carlos I
-- `89070` · Meteo Station Gabriel de Castilla
+Auth:
 
-### Automatic supplemental stations (map + comparison)
+- `POST /api/auth/token`
+- `POST /api/auth/refresh`
 
-- `89064R` · Radiometric supplemental station for Juan Carlos I
+Metadata:
 
-### Archived station (metadata only)
+- `GET /api/metadata/latest-availability/station/{identificacion}`
 
-- `89064RA` · Historical archive endpoint (until 08/03/2007), not part of startup map overlay to minimize calls
+Analysis:
 
-## What changed in this overhaul
+- `GET /api/analysis/bootstrap`
+- `POST /api/analysis/query-jobs`
+- `GET /api/analysis/query-jobs/{jobId}`
+- `GET /api/analysis/query-jobs/{jobId}/result`
+- `GET /api/analysis/playback`
+- `GET /api/analysis/timeframes`
 
-- App is now Antarctic-only by design.
-- Startup loads station map and station list immediately from the Antarctic model.
-- Query now asks only for `start`; `end` is auto-capped by:
-  - AEMET 30-day limit
-  - latest available observation for selected station
-- Single-station query jobs now drive analysis with explicit progress and cache reuse.
-- New playback and timeframe endpoints provide synchronized spatiotemporal analysis.
-- SQLite persistence and fetch-window reuse are central: once loaded, windows are reused and upstream calls are skipped.
-- UI/UX redesigned for analyst decision support:
-  - station overlay map (2 active meteorological Antarctic IDs)
-  - single-station selection from list or map
-  - query progress bar (windows/calls/frames)
-  - playable wind overlays (direction arrow, trail, optional temperature/pressure overlays)
-  - KPI cards (coverage, speed, P90, hours above thresholds, WPD proxy, temperature range)
-  - wind timeline, weather timeline, 16-sector wind rose
-  - timeframe analysis + compare mode
-  - simulated wind farm expected generation (configured in `/config`)
-  - one-click PDF export of the “Analysis & Recommendations Report” (A4 print-safe layout with metadata/sources/timeframe context)
-  - AEMET/OSM attribution block
+Export:
 
-## API overview
+- `GET /api/antarctic/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
 
-### Authentication
+Swagger docs:
 
-`POST /api/auth/token`
+- `http://127.0.0.1:8000/docs`
 
-- Body: `{ "username": "...", "password": "..." }`
-- Returns short-lived JWT bearer token.
-- `POST /api/auth/refresh` rotates token expiry for active sessions (requires bearer token).
-- Frontend session policy is inactivity-based:
-  - continuous interaction keeps session alive by refreshing token before expiry
-  - 1 hour without interaction forces re-login
-- All `/api/metadata/*`, `/api/analysis/*`, and `/api/antarctic/*` endpoints require `Authorization: Bearer <token>`.
-- In non-local environments, terminate TLS at your reverse proxy so bearer tokens are never sent over plain HTTP.
+## Timezone Behavior
 
-### Frontend contract (only public API surface exposed in `/docs`)
+- Config page timezone (`IANA`, e.g. `Europe/Madrid`) is used as API `location`.
+- Frontend renders datetimes in configured timezone (dashboard, charts, tables, statuses).
+- Timeframe grouping boundaries respect station-local timezone logic where required.
+- PDF export uses the configured timezone for report timestamps and context fields.
 
-`POST /api/auth/refresh`
+## Cache-First Data Strategy
 
-- Extends access-token expiry for active authenticated sessions.
+- Measurements stored in SQLite `measurements`.
+- Fetch coverage stored in SQLite `fetch_windows`.
+- Missing history is requested in full month windows to satisfy AEMET limits.
+- Query jobs:
+  - plan total windows
+  - skip cached windows
+  - fetch only missing windows
+  - report progress (`completedWindows`, `completedApiCalls`, `framesReady`, etc.)
+- Startup bootstrap warms cache for current 30-day month windows of map stations.
+- Latest availability:
+  - cache-first from stored data
+  - fallback month-probing when cache has no recent rows
 
-`GET /api/analysis/bootstrap`
+Rate-limit protections:
 
-- Warms cache for active Antarctic map stations.
-- Returns station profiles, selectable IDs, latest snapshots, and suggested starts.
+- outbound spacing controlled by `AEMET_MIN_REQUEST_INTERVAL_SECONDS`
+- retries for transient upstream failures
+- adaptive backoff when 429 is returned
 
-`POST /api/analysis/query-jobs`
+## Feasibility and Simulation Metrics
 
-- Creates a cache-first station analysis job for the selected station.
-- Request supports:
-  - `location` (IANA timezone used to interpret input datetimes and render output datetimes)
-  - `aggregation` (`none|hourly|daily|monthly`)
-- Returns planned windows, planned API calls, and frame planning metadata.
+Computed outputs include:
 
-`GET /api/analysis/query-jobs/{jobId}`
+- data points and coverage
+- avg / min / max / P90 wind speed
+- hours above thresholds (>= 3, >= 5 m/s)
+- dominant direction
+- temperature and pressure statistics
+- wind power density proxy
+- estimated generation (`MWh`) when simulation parameters are configured
 
-- Poll job progress for UI loading bars.
-- Includes calls progress, windows progress, and playback readiness.
+Simulation model includes:
 
-`GET /api/analysis/query-jobs/{jobId}/result`
-
-- Returns feasibility snapshot for the selected station using currently cached/fetched data.
-
-`GET /api/analysis/playback`
-
-Query params:
-
-- `station`, `start`, `end`, `step` (`10m|1h|3h|1d`), `location`
-
-Response includes ordered frames with:
-
-- `datetime`, `speed`, `direction`, `temperature`, `pressure`
-- `qualityFlag` (`observed|aggregated|gap_filled`)
-- vector components `dx/dy`
-- wind rose summary (`16` sectors, speed buckets, dominant sector, concentration, calm share)
-
-`GET /api/analysis/timeframes`
-
-Query params:
-
-- `station`, `start`, `end`, `groupBy` (`hour|day|week|month|season`), `location`
-- optional `forceRefreshOnEmpty=true` to force-refresh month windows when the initial cache pass returns no buckets
-- optional compare range: `compareStart`, `compareEnd`
-- optional simulated wind farm params:
-  - `turbineCount`
-  - `ratedPowerKw`
-  - `cutInSpeedMps`
-  - `ratedSpeedMps`
-  - `cutOutSpeedMps`
-  - `referenceAirDensityKgM3` (default `1.225`)
-  - `minOperatingTempC`, `maxOperatingTempC`
-  - `minOperatingPressureHpa`, `maxOperatingPressureHpa`
-
-Returns grouped timeframe buckets and comparison deltas, including estimated generation (`MWh`) when simulation parameters are provided. Generation uses density-corrected wind speed (`rho/rho_ref`) when temperature+pressure are available and enforces configured operating temperature/pressure limits.
-For daily/monthly grouping logic, station-local timezone boundaries are used to avoid day/month rollover bias.
-
-For long timeframe/compare ranges, backend fetches missing data in sequential 30-day windows (cache-first) to comply with the AEMET one-month upstream constraint.
-
-`GET /api/metadata/latest-availability/station/{identificacion}`
-
-- Resolves latest known station observation (cache-first, month-window fallback probing).
-
-`GET /api/antarctic/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
-
-- Exports CSV/Parquet from cache-first retrieval.
-- Accepts long windows; backend resolves them as month-sized AEMET windows internally.
-- Supports `location` and `aggregation` (`none|hourly|daily|monthly`).
-- Used by frontend export buttons in Raw Data Tables.
-
-PDF report export note:
-
-- The Analysis & Recommendations PDF download is generated client-side from the rendered report card (no separate backend PDF endpoint required).
-- Export includes generation date/time, timezone, selected station, loaded timeframe, sources and legal attribution, and the visible analysis sections in print-safe A4 format.
-
-The following legacy endpoints are intentionally not exposed anymore:
-
-- `/api/analysis/feasibility`
-- `/api/metadata/available-data`
-- `/api/metadata/stations`
-- `/api/antarctic/datos/...`
-
-## Low-call strategy and persistence
-
-- Measurements are persisted in `SQLite` table `measurements`.
-- Requested windows are persisted in `fetch_windows`.
-- Repeated requests inside covered windows do not hit AEMET.
-- Startup warm-cache pulls max 30-day probe for active map stations only when cache is stale.
-- Latest availability is inferred from cached measurements first; remote probe is fallback.
-
-## Feasibility metrics currently computed
-
-Per station and selected window:
-
-- row count and coverage ratio
-- average / P90 / max wind speed
-- hours above 3 m/s and 5 m/s
-- min/avg/max temperature
-- average pressure
-- prevailing wind direction (circular mean)
-- estimated wind power density proxy (`0.5 * rho * v^3`, rho from pressure + temperature when available)
-
-These are screening metrics, not a bankable energy-yield model.
-
-## Additional recommendation factors now included
-
-- Air-density correction in generation estimates:
-  - `rho = p / (R * T)` from measured pressure and temperature (fallback to `referenceAirDensityKgM3`)
-  - density-corrected speed for power-curve lookup: `v_eq = v * (rho/rho_ref)^(1/3)`
-- Operating envelope screening:
-  - If a row is outside configured operating temperature or pressure bounds, simulated generation for that interval is set to `0`.
-- This improves comparability between periods with different meteorological density conditions and highlights environment-driven operating risk.
-
-## AEMET endpoint positioning decision
-
-The app treats Antarctic IDs as belonging to the Antarctic endpoint workflow and does not rely on non-Antarctic climatological endpoints for core analysis.
-
-Rationale:
-
-- Antarctic availability and 30-day constraints are specific and strict.
-- Other AEMET endpoint families use `idema` station semantics that are not guaranteed to provide equivalent Antarctic coverage.
-- For reliability and minimum upstream pressure, this product keeps one authoritative data path for Antarctic feasibility.
-
-See `docs/antarctic_api_positioning.md`.
+- turbine power-curve thresholds (`cut-in`, `rated`, `cut-out`)
+- reference air density (`rho_ref`)
+- air-density correction using measured temperature/pressure when available
+- operating envelope checks for temperature and pressure bounds
 
 ## Setup
+
+Prerequisites:
+
+- Python `>=3.11`
+- Node.js + npm
+
+1. Configure env:
 
 ```bash
 cp .env.example .env
 ```
 
-Set:
+Set at least:
 
 ```dotenv
 AEMET_API_KEY=your_key_here
@@ -302,13 +215,13 @@ JWT_SECRET_KEY=change_this_secret_key
 LOG_LEVEL=INFO
 ```
 
-Install + build:
+2. Install backend + frontend deps:
 
 ```bash
 bash scripts/setup.sh
 ```
 
-Activate the virtual environment (required in each new terminal if you run commands manually):
+3. Activate virtualenv (required in every new terminal if running commands manually):
 
 ```bash
 source .venv/bin/activate
@@ -320,13 +233,13 @@ Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-Run:
+4. Run app:
 
 ```bash
 bash scripts/up_local.sh
 ```
 
-Manual backend run (if you do not use `scripts/up_local.sh`):
+Manual backend start (without `up_local.sh`):
 
 ```bash
 source .venv/bin/activate
@@ -336,28 +249,18 @@ bash scripts/start.sh --reload
 Open:
 
 - Dashboard: `http://127.0.0.1:8000/`
-- OpenAPI docs: `http://127.0.0.1:8000/docs`
+- Login: `http://127.0.0.1:8000/login`
+- Config: `http://127.0.0.1:8000/config`
+- API docs: `http://127.0.0.1:8000/docs`
 
-Use the login page with `API_AUTH_USERNAME` / `API_AUTH_PASSWORD`. The frontend stores the JWT and attaches it to API requests automatically.
+## Authentication and Session
 
-## Vercel deployment
+- All `/api/metadata/*`, `/api/analysis/*`, `/api/antarctic/*` require bearer auth.
+- Frontend stores access token and auto-attaches it to API calls.
+- Session extends automatically during active use (`/api/auth/refresh`).
+- Inactivity timeout is 1 hour, then user must log in again.
 
-This repository ships with:
-
-- `main.py` and `src/main.py` FastAPI entrypoint shims for Vercel auto-detection.
-- `vercel.json` with:
-  - `buildCommand: bash scripts/vercel_build.sh`.
-
-If your Vercel project uses `Root Directory = src`, this repo also includes:
-
-- `src/scripts/vercel_build.sh`
-- `src/vercel.json`
-
-to provide the same behavior from the `src` root.
-
-The build script installs frontend deps and creates `frontend/dist/` on each deployment, so `/`, `/login`, and `/config` can be served without committing `frontend/dist`.
-
-## Tests
+## Testing
 
 ```bash
 source .venv/bin/activate
@@ -365,21 +268,31 @@ pytest -q
 npm --prefix frontend run build
 ```
 
-Run with coverage:
+Coverage:
 
 ```bash
 source .venv/bin/activate
 pytest --cov=app --cov-report=term-missing
 ```
 
-## Logging and troubleshooting
+## Deployment (Vercel)
 
-- Backend logs include:
-  - request lifecycle logs (`request.start`, `request.end`, `request.error`)
-  - `X-Request-ID` response header for correlation
-  - endpoint/service warnings on upstream AEMET failures and 429 cooldowns
-- Backend log level is controlled by `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
-- Frontend troubleshooting logs can be enabled in browser console:
+- Root and `src` entrypoint shims are included for FastAPI detection.
+- `vercel.json` uses `bash scripts/vercel_build.sh`.
+- Build script compiles frontend and serves from `frontend/dist` at deploy time.
+- `frontend/dist` is build output and should not be committed.
+
+## Logging and Troubleshooting
+
+Backend:
+
+- request lifecycle logs (`request.start`, `request.end`, `request.error`)
+- `X-Request-ID` response header for correlation
+- service-level logs for cache decisions, upstream calls, retries, and failures
+
+Frontend:
+
+- configurable debug logs:
 
 ```js
 localStorage.setItem("aemet.debug_logging", "1"); location.reload();
@@ -391,25 +304,16 @@ Disable:
 localStorage.setItem("aemet.debug_logging", "0"); location.reload();
 ```
 
-## Scalability and maintainability notes
+## Legal and Attribution Compliance
 
-- API dependencies are cached (`Settings`, repository, AEMET client, auth service, Antarctic service) to avoid per-request re-instantiation overhead.
-- Data retrieval remains month-window cache-first with persisted fetch windows and measurement upserts.
-- Route-level datetime/timezone parsing and service-error mapping are centralized in `app/api/route_utils.py` to reduce duplication and improve consistency.
-- Frontend and backend remain split into domain modules to keep refactors localized.
-
-## Legal and attribution compliance
-
-This app implements AEMET and OpenStreetMap attribution requirements in both UI and API headers.
-
-Included references:
+App UI and API headers include required AEMET and OpenStreetMap attribution:
 
 - `© AEMET`
 - `Fuente: AEMET`
 - `Información elaborada utilizando, entre otras, la obtenida de la Agencia Estatal de Meteorología`
-- `© OpenStreetMap contributors` (ODbL)
+- `© OpenStreetMap contributors (ODbL)`
 
-Response headers exposed:
+Compliance headers:
 
 - `X-AEMET-Copyright`
 - `X-AEMET-Source`
@@ -419,11 +323,9 @@ Response headers exposed:
 - `X-OSM-Copyright-URL`
 - `X-AEMET-Latest-Observation-UTC` (when available)
 
-Frontend build outputs are treated as build artifacts (`frontend/dist/`) and are not versioned.
+## Supporting Docs
 
-## Docs
-
-- `docs/api_contract.md`: exact frontend API contract exposed in `/docs` + verification steps
-- `docs/antarctic_api_positioning.md`: Antarctic endpoint strategy and station-ID handling
-- `docs/feasibility_framework.md`: analyst interpretation framework + web references
-- `docs/implementation_backlog.md`: updated delivery plan
+- `docs/api_contract.md`
+- `docs/antarctic_api_positioning.md`
+- `docs/feasibility_framework.md`
+- `docs/implementation_backlog.md`

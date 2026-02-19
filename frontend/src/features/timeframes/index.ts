@@ -1,8 +1,8 @@
-import { formatDateTime, formatNumber } from "../core/api.js";
-import { TimeframeAnalyticsResponse } from "../core/types.js";
-import { periodWord, summarize } from "./timeframes_summary.js";
+import { formatDateTime, formatNumber } from "../../core/api.js";
+import { TimeframeAnalyticsResponse } from "../../core/types.js";
+import { periodWord, summarize } from "./summary.js";
 
-export { renderComparison } from "./timeframes_comparison.js";
+export { renderComparison } from "./comparison.js";
 
 export function renderTimeframeCards(
   container: HTMLDivElement,

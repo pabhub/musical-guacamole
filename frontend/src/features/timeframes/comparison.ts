@@ -1,5 +1,5 @@
-import { formatNumber } from "../core/api.js";
-import { TimeframeAnalyticsResponse } from "../core/types.js";
+import { formatNumber } from "../../core/api.js";
+import { TimeframeAnalyticsResponse } from "../../core/types.js";
 import {
   MONTH_KEYS,
   SEASON_KEYS,
@@ -13,7 +13,7 @@ import {
   parseYearAndKey,
   periodWord,
   summarize,
-} from "./timeframes_summary.js";
+} from "./summary.js";
 
 type ComparisonMetricKey = "avgSpeed" | "p90Speed" | "hoursAbove5mps" | "estimatedGenerationMwh";
 

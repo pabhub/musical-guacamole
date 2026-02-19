@@ -13,9 +13,9 @@ from app.models import (
     TimeAggregation,
 )
 from app.services.antarctic.constants import UTC
-from app.services.antarctic.playback_frames import PlaybackFramesMixin
-from app.services.antarctic.playback_query_jobs import PlaybackQueryJobsMixin
-from app.services.antarctic.playback_timeframes import PlaybackTimeframesMixin
+from app.services.antarctic.playback.frames import PlaybackFramesMixin
+from app.services.antarctic.playback.query_jobs import PlaybackQueryJobsMixin
+from app.services.antarctic.playback.timeframes import PlaybackTimeframesMixin
 
 
 class PlaybackAnalyticsMixin(PlaybackQueryJobsMixin, PlaybackFramesMixin, PlaybackTimeframesMixin):
