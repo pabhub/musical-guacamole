@@ -12,6 +12,16 @@ import httpx
 
 from app.models import SourceMeasurement, StationCatalogItem
 
+
+def _utc_iso(dt: datetime) -> str:
+    """Normalize a datetime to a naive-UTC ISO string (no +00:00 suffix).
+
+    Ensures consistent string comparisons in SQLite WHERE clauses.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.isoformat()
+
 logger = logging.getLogger(__name__)
 
 # Store cold-start seed logs in memory so we can read them via a debug API endpoint
@@ -348,7 +358,7 @@ class SQLiteRepository:
         start_utc: datetime,
         end_utc: datetime,
     ) -> None:
-        now_utc = datetime.utcnow().isoformat()
+        now_utc = _utc_iso(datetime.utcnow())
         direction_checked = 1
         logger.debug(
             "Upsert measurements station=%s rows=%d start=%s end=%s",
@@ -381,7 +391,7 @@ class SQLiteRepository:
                     (
                         station_id,
                         row.station_name,
-                        row.measured_at_utc.isoformat(),
+                        _utc_iso(row.measured_at_utc),
                         row.temperature_c,
                         row.pressure_hpa,
                         row.speed_mps,
@@ -403,7 +413,7 @@ class SQLiteRepository:
                     fetched_at_utc = excluded.fetched_at_utc,
                     direction_checked = excluded.direction_checked
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat(), now_utc, direction_checked),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc), now_utc, direction_checked),
             )
             conn.commit()
 
@@ -425,7 +435,7 @@ class SQLiteRepository:
                 ORDER BY fetched_at_utc DESC
                 LIMIT 1
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat()),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc)),
             ).fetchone()
         if row is None:
             return False
@@ -450,7 +460,7 @@ class SQLiteRepository:
                   AND end_utc >= ?
                 LIMIT 1
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat()),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc)),
             ).fetchone()
         return row is not None
 
@@ -471,7 +481,7 @@ class SQLiteRepository:
                 ORDER BY fetched_at_utc DESC
                 LIMIT 1
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat()),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc)),
             ).fetchone()
         if row is None or row["direction_checked"] is None:
             return False
@@ -483,7 +493,7 @@ class SQLiteRepository:
         start_utc: datetime,
         end_utc: datetime,
     ) -> None:
-        now_utc = datetime.utcnow().isoformat()
+        now_utc = _utc_iso(datetime.utcnow())
         with self._write_connection() as conn:
             conn.execute(
                 """
@@ -493,7 +503,7 @@ class SQLiteRepository:
                   AND start_utc <= ?
                   AND end_utc >= ?
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat()),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc)),
             )
             conn.execute(
                 """
@@ -509,12 +519,12 @@ class SQLiteRepository:
                 """,
                 (
                     station_id,
-                    start_utc.isoformat(),
-                    end_utc.isoformat(),
+                    _utc_iso(start_utc),
+                    _utc_iso(end_utc),
                     now_utc,
                     station_id,
-                    start_utc.isoformat(),
-                    end_utc.isoformat(),
+                    _utc_iso(start_utc),
+                    _utc_iso(end_utc),
                 ),
             )
             conn.commit()
@@ -531,7 +541,7 @@ class SQLiteRepository:
                   AND measured_at_utc <= ?
                 ORDER BY measured_at_utc ASC
                 """,
-                (station_id, start_utc.isoformat(), end_utc.isoformat()),
+                (station_id, _utc_iso(start_utc), _utc_iso(end_utc)),
             ).fetchall()
         return [
             SourceMeasurement(
@@ -579,7 +589,7 @@ class SQLiteRepository:
                         row.altitude_m,
                         row.data_endpoint,
                         int(row.is_antarctic_station),
-                        now_utc.isoformat(),
+                        _utc_iso(now_utc),
                     )
                     for row in rows
                 ],
@@ -707,7 +717,7 @@ class SQLiteRepository:
         )
 
     def upsert_analysis_query_job(self, payload: dict[str, object]) -> None:
-        now_utc = datetime.now(timezone.utc).isoformat()
+        now_utc = _utc_iso(datetime.now(timezone.utc))
         logger.debug(
             "Upsert query job id=%s status=%s completed_windows=%s total_windows=%s",
             payload.get("job_id"),
