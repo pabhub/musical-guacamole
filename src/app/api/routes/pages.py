@@ -53,6 +53,7 @@ def get_debug_logs():
         if auth_token:
             kwargs["auth_token"] = auth_token
             info["auth_token_present"] = True
+            info["auth_token_length"] = len(auth_token)
         client = libsql_client.create_client_sync(**kwargs)
         rs = client.execute("SELECT COUNT(*) as cnt FROM measurements")
         info["measurement_count"] = rs.rows[0][0] if rs.rows else "no rows"
@@ -61,4 +62,24 @@ def get_debug_logs():
     except Exception as e:
         info["turso_error"] = f"{type(e).__name__}: {e}"
         info["turso_traceback"] = traceback.format_exc()
+    
+    # Raw HTTP probe to see what Turso actually returns
+    try:
+        import httpx
+        turso_url = settings.database_url.rstrip("/")
+        auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        payload = {
+            "requests": [
+                {"type": "execute", "stmt": {"sql": "SELECT 1"}},
+                {"type": "close"}
+            ]
+        }
+        resp = httpx.post(f"{turso_url}/v2/pipeline", json=payload, headers=headers, timeout=10.0)
+        info["raw_http_status"] = resp.status_code
+        info["raw_http_body"] = resp.text[:500]
+    except Exception as e:
+        info["raw_http_error"] = f"{type(e).__name__}: {e}"
     return info
