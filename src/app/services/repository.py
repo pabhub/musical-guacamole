@@ -21,17 +21,32 @@ _BUNDLED_DB_CANDIDATES = [
 ]
 
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
 def _seed_from_bundled(target_path: str) -> None:
-    """Copy a bundled read-only cache DB to the writable target path on Vercel."""
+    """Copy a bundled read-only cache DB to the writable target path on Vercel.
+
+    Validates SQLite magic bytes before copying so that Git LFS pointer files
+    (which Vercel stores instead of the real blobs) are silently skipped.
+    """
     if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
         return
     if os.path.exists(target_path):
         return
     for candidate in _BUNDLED_DB_CANDIDATES:
-        if candidate.is_file():
-            logger.info("Seeding cache DB from bundled %s → %s", candidate, target_path)
-            shutil.copy2(str(candidate), target_path)
-            return
+        if not candidate.is_file():
+            continue
+        try:
+            header = candidate.read_bytes()[:16]
+        except OSError:
+            continue
+        if not header.startswith(_SQLITE_MAGIC):
+            logger.warning("Skipping bundled %s — not a valid SQLite file (LFS pointer?)", candidate)
+            continue
+        logger.info("Seeding cache DB from bundled %s → %s", candidate, target_path)
+        shutil.copy2(str(candidate), target_path)
+        return
 
 
 class SQLiteRepository:
