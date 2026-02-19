@@ -73,6 +73,7 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 cd "$ROOT_DIR"
+export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
 if [[ "$RELOAD" -eq 1 ]]; then
   exec uvicorn app.main:app --host "$HOST" --port "$PORT" --reload

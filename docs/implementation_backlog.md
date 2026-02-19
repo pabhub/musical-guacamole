@@ -1,153 +1,74 @@
-# Implementation Backlog (Actionable)
+# Implementation Plan and Backlog
 
-This backlog turns the AEMET endpoint research into concrete, incremental work items with acceptance criteria.
+## Completed in this overhaul
 
-## P0: Data Availability + Station Discovery
+1. Antarctic-only product scope
+- Enforced UI station selection to:
+  - `89064` Meteo Station Juan Carlos I
+  - `89070` Meteo Station Gabriel de Castilla
+- Added fixed Antarctic station model including supplemental and archive IDs.
 
-### 1. Station catalog API with DB cache
-- Status: Done
-- Scope:
-  - Add `GET /api/metadata/stations`
-  - Source from AEMET station inventory endpoint
-  - Cache in SQLite with 7-day freshness (`STATION_CATALOG_FRESHNESS_SECONDS`)
-- Acceptance criteria:
-  - Endpoint returns `checked_at_utc`, `cached_until_utc`, `cache_hit`, `data[]`
-  - Repeated calls inside TTL do not hit upstream
-  - `force_refresh=true` bypasses cache
+2. Startup UX and map behavior
+- Added `/api/analysis/bootstrap`.
+- Startup now shows 3 active station overlays (`89064`, `89064R`, `89070`) from persisted/latest cache.
 
-### 2. Frontend station discovery UI
-- Status: Todo
-- Scope:
-  - Add searchable station list component backed by `/api/metadata/stations`
-  - Keep current Antarctic query mode unchanged until generic endpoint is ready
-- Acceptance criteria:
-  - User can browse/filter station catalog in UI
-  - UI displays cache freshness timestamp and source count
+3. API call minimization and persistence
+- Warm-cache strategy on active stations with freshness checks.
+- SQLite fetch-window reuse to avoid repeated upstream requests.
+- Archive ID (`89064RA`) excluded from startup map calls.
 
-### 3. Generic station query endpoint (non-Antarctic)
-- Status: Todo
-- Scope:
-  - New endpoint using station code directly (e.g., `idema`) instead of fixed enum
-  - Preserve existing Antarctic endpoint for backwards compatibility
-- Acceptance criteria:
-  - Query works for arbitrary station codes returned by catalog
-  - Existing `/api/antarctic/...` behavior remains unchanged
+4. Analyst API surface finalized for frontend
+- Exposed in `/docs`:
+  - `POST /api/auth/token`
+  - `GET /api/metadata/latest-availability/station/{identificacion}`
+  - `GET /api/analysis/bootstrap`
+  - `POST /api/analysis/query-jobs`
+  - `GET /api/analysis/query-jobs/{job_id}`
+  - `GET /api/analysis/query-jobs/{job_id}/result`
+  - `GET /api/analysis/playback`
+  - `GET /api/analysis/timeframes`
+  - `GET /api/antarctic/export/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
+- Removed legacy HTTP routes not used by frontend:
+  - `/api/analysis/feasibility`
+  - `/api/metadata/available-data`
+  - `/api/metadata/stations`
+  - `/api/antarctic/datos/...`
 
-## P1: Climate Context Features
+5. UI/UX redesign + frontend code structure
+- Rebuilt dashboard for feasibility screening:
+  - KPI cards
+  - station comparison table
+  - wind/temperature-pressure/direction charts
+  - legal attribution panel
+  - selected station detail table
+- Split frontend logic into focused modules (`dashboard/analysis_job.ts`, `dashboard/bootstrap_flow.ts`, `dashboard/export_actions.ts`, `dashboard/chart_*`, `dashboard/timeframe_manager.ts`, etc.) and enabled strict TS unused checks.
+- Added cross-page shared frontend modules under `frontend/src/core/` (`dom.ts`, `navigation.ts`, `settings.ts`) and consumed them from dashboard/config/login.
+- Replaced large page HTML files with componentized templates under `frontend/src/components/`; `frontend/src/pages/*` now only host thin `#app-root` shells.
 
-### 4. Climate normal vs observed anomaly cards
-- Status: Todo
-- Endpoints:
-  - `valores/climatologicos/normales/estacion/{idema}`
-  - `valores/climatologicos/diarios/.../estacion/{idema}`
-- Acceptance criteria:
-  - Dashboard shows anomaly (`observed - normal`) where available
-  - Missing baseline data degrades gracefully with clear messaging
+6. Compliance
+- AEMET + OSM attribution integrated in UI and response headers.
+- Tests include compliance header assertions and explicit API contract/OpenAPI path assertions.
 
-### 5. Historical benchmark mode (monthly/annual)
-- Status: Todo
-- Endpoint:
-  - `valores/climatologicos/mensualesanuales/...`
-- Acceptance criteria:
-  - User can switch between current-window and historical benchmark panels
-  - Data exports include benchmark columns when active
+## Next priorities
 
-### 6. Record proximity alerts
-- Status: Todo
-- Endpoint:
-  - `valores/climatologicos/valoresextremos/parametro/{parametro}/estacion/{idema}`
-- Acceptance criteria:
-  - UI shows “near record” badges based on configurable threshold
-  - Alert logic covered by deterministic tests
+1. Historical backfill orchestrator
+- Goal: build month-by-month persisted history (12+ months) without burst calling.
+- Output: monthly climatology cards (P50/P90 speed, directional concentration, temperature extremes).
 
-## P2: Operational Context Modules
+2. Extended Antarctic variables
+- Evaluate adding `racha`, `hr`, `prec` when available in Antarctic payloads.
+- Keep field-level null-safe behavior and explicit coverage reporting.
 
-### 7. Synoptic context cards
-- Status: Todo
-- Endpoints:
-  - `mapasygraficos/analisis`
-  - `mapasygraficos/mapassignificativos/...`
-- Acceptance criteria:
-  - Dashboard shows latest map links with timestamps
-  - Failures do not block primary station analytics flow
+3. Decision scorecard
+- Add configurable screening thresholds and traffic-light scoring for:
+  - resource quality
+  - variability risk
+  - data confidence
+  - operability constraints
 
-### 8. Warning timeline integration
-- Status: Todo
-- Endpoints:
-  - `avisos_cap/ultimoelaborado/area/{area}`
-  - `avisos_cap/archivo/...`
-- Acceptance criteria:
-  - Warnings can be overlaid on selected query period
-  - Severity is clearly visible in table/timeline markers
+4. Optional contextual modules
+- Evaluate additional AEMET products only where Antarctic applicability is confirmed.
+- Keep these modules non-blocking and cache-aware.
 
-## Technical debt / quality tasks
-
-### 9. Response contract tests against saved fixtures
-- Status: Todo
-- Scope:
-  - Add fixture-based tests for AEMET metadata/data payload variants
-- Acceptance criteria:
-  - Covers success, no-data, malformed payload, and HTTP error paths
-
-### 10. Frontend build reproducibility in local dev
-- Status: Todo
-- Scope:
-  - Add project-local TypeScript dependency and lockfile
-  - Ensure `bash scripts/build_frontend.sh` works in clean environment
-- Acceptance criteria:
-  - `npm ci && npm run build` produces current `frontend/dist` deterministically
-
-## P0/P1 Security & Access Control
-
-### 11. Authentication foundation (JWT)
-- Status: Todo
-- Scope:
-  - Add password-based login endpoint issuing JWT access tokens
-  - Add refresh-token flow with rotation/revocation
-  - Add auth middleware/dependency for protected endpoints
-- Acceptance criteria:
-  - Unauthenticated calls to protected routes return `401`
-  - Access token expiry and refresh flow are covered by tests
-  - Token signing key and TTL are fully env-configurable
-
-### 12. User registration + lifecycle management
-- Status: Todo
-- Scope:
-  - User registration endpoint with email uniqueness
-  - User listing/details/update/deactivate endpoints (admin-protected)
-  - Password hashing and password-change/reset primitives
-- Acceptance criteria:
-  - Users can register/login with secure password storage (hashed + salted)
-  - Deactivated users cannot authenticate
-  - Admin APIs enforce role checks and are audited in logs
-
-### 13. Roles and authorization model
-- Status: Todo
-- Scope:
-  - Define roles (`admin`, `analyst`, `viewer`) and per-route permissions
-  - Enforce authorization in backend dependencies
-  - Reflect role capabilities in frontend navigation/actions
-- Acceptance criteria:
-  - Role-based route matrix is documented and tested
-  - Forbidden access returns `403` with consistent error contract
-
-### 14. Security hardening
-- Status: Todo
-- Scope:
-  - Rate limits on auth endpoints
-  - Brute-force mitigation and lockout policy
-  - Session/device revocation support
-  - Optional MFA-ready schema hooks
-- Acceptance criteria:
-  - Auth endpoints are rate-limited and monitored
-  - Security events (failed login, lockout, token revocation) are logged
-
-### 15. Migration and rollout plan
-- Status: Todo
-- Scope:
-  - DB schema migrations for users/roles/tokens
-  - Backward-compatible rollout (public mode -> auth-required mode flag)
-  - Seed first admin user flow
-- Acceptance criteria:
-  - Fresh install and upgrade paths are tested
-  - Feature flag can enable/disable mandatory auth without code change
+5. Reporting
+- Export a decision memo package (summary KPIs + charts + source attribution footer).

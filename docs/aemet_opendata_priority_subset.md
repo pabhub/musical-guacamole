@@ -8,7 +8,7 @@ Source spec: `https://opendata.aemet.es/AEMET_OpenData_specification.json`
 
 | Endpoint | Tag | Why it matters | Suggested use in app |
 |---|---|---|---|
-| `GET /api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}` | `antartida` | Core live/near-live observations for our current dashboard. | Keep as primary data source for map/charts/export. |
+| `GET /api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}` | `antartida` | Core upstream source for Antarctic observations. | Keep as backend upstream source behind cache-first `/api/analysis/*` and `/api/antarctic/export/*`. |
 | `GET /api/valores/climatologicos/inventarioestaciones/estaciones/{estaciones}` | `valores-climatologicos` | Confirms station metadata and valid station codes. | Validate configured station IDs and enrich metadata panel. |
 | `GET /api/valores/climatologicos/inventarioestaciones/todasestaciones` | `valores-climatologicos` | Complete station catalog for discovery/future expansion. | Build station selector that supports future non-Antarctic expansion. |
 | `GET /api/valores/climatologicos/diarios/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{idema}` | `valores-climatologicos` | Historical baseline at daily granularity. | Compare current values vs historical daily averages/anomalies. |

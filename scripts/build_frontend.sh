@@ -16,6 +16,7 @@ else
   echo "Error: TypeScript compiler not found. Run 'npm install --prefix frontend' first." >&2
   exit 1
 fi
-cp "$FRONTEND_DIR/src/index.html" "$DIST_DIR/index.html"
-cp "$FRONTEND_DIR/src/config.html" "$DIST_DIR/config.html"
-cp "$FRONTEND_DIR/src/style.css" "$DIST_DIR/style.css"
+cp "$FRONTEND_DIR/src/pages/index.html" "$DIST_DIR/index.html"
+cp "$FRONTEND_DIR/src/pages/login.html" "$DIST_DIR/login.html"
+cp "$FRONTEND_DIR/src/pages/config.html" "$DIST_DIR/config.html"
+cp "$FRONTEND_DIR/src/styles/style.css" "$DIST_DIR/style.css"

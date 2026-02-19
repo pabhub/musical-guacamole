@@ -25,7 +25,7 @@ This document maps additional AEMET OpenData endpoints to potential product feat
 
 - Endpoints:
   - `GET /api/valores/climatologicos/valoresextremos/parametro/{parametro}/estacion/{idema}`
-  - `GET /api/antarctic/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}`
+  - `GET /api/antartida/datos/fechaini/{fechaIniStr}/fechafin/{fechaFinStr}/estacion/{identificacion}` (AEMET upstream)
 - Feature:
   - Detect when current values approach station historical extremes.
   - “Record watch” widget in dashboard.

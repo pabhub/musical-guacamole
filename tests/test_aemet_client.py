@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.aemet_client import AemetClient
+from app.services.aemet_client import AemetClient
 
 UTC = ZoneInfo("UTC")
 
@@ -39,7 +39,7 @@ class FakeHttpClient:
 
 def test_fetch_station_data_raises_clear_error_when_metadata_has_no_datos(monkeypatch):
     responses = [FakeResponse({"estado": 401, "descripcion": "API key no válida"})]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="bad-key")
     with pytest.raises(RuntimeError, match="missing 'datos' URL"):
@@ -52,7 +52,7 @@ def test_fetch_station_data_raises_clear_error_when_metadata_has_no_datos(monkey
 
 def test_fetch_station_data_returns_empty_for_aemet_no_data_404(monkeypatch):
     responses = [FakeResponse({"estado": 404, "descripcion": "No hay datos que satisfagan esos criterios"})]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_data(
@@ -79,7 +79,7 @@ def test_fetch_station_inventory_parses_station_rows(monkeypatch):
             ]
         ),
     ]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_inventory()
@@ -99,7 +99,7 @@ def test_fetch_station_inventory_parses_csv_payload(monkeypatch):
         FakeResponse({"estado": 200, "datos": "https://example.test/data.csv"}),
         FakeResponse(csv_payload),
     ]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_inventory()
@@ -127,7 +127,7 @@ def test_fetch_station_inventory_handles_uppercase_json_keys(monkeypatch):
             ]
         ),
     ]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_inventory()
@@ -156,7 +156,7 @@ def test_fetch_station_inventory_supports_nested_properties_shape(monkeypatch):
             ]
         ),
     ]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_inventory()
@@ -175,7 +175,7 @@ def test_fetch_station_inventory_parses_json_lines_payload(monkeypatch):
         FakeResponse({"estado": 200, "datos": "https://example.test/data.txt"}),
         FakeResponse(json_lines_payload),
     ]
-    monkeypatch.setattr("app.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
 
     client = AemetClient(api_key="ok-key")
     out = client.fetch_station_inventory()
@@ -183,3 +183,98 @@ def test_fetch_station_inventory_parses_json_lines_payload(monkeypatch):
     assert len(out) == 2
     assert out[0].station_id == "0016A"
     assert out[0].station_name == "ESCORCA, LLUC"
+
+
+def test_fetch_station_data_parses_alternative_measurement_keys_and_cardinal_direction(monkeypatch):
+    responses = [
+        FakeResponse({"estado": 200, "datos": "https://example.test/data.json"}),
+        FakeResponse(
+            [
+                {
+                    "NOMBRE": "JUAN CARLOS I",
+                    "FHORA": "2025-02-18T10:00:00Z",
+                    "TEMPERATURA": "-1,7",
+                    "PRESION": "978,2",
+                    "VV": "6,4",
+                    "DD": "SO",
+                    "LATITUD": "625826S",
+                    "LONGITUD": "603936W",
+                    "ALTITUD": "14",
+                }
+            ]
+        ),
+    ]
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+
+    client = AemetClient(api_key="ok-key")
+    rows = client.fetch_station_data(
+        start_utc=datetime(2025, 2, 18, 9, 0, tzinfo=UTC),
+        end_utc=datetime(2025, 2, 18, 11, 0, tzinfo=UTC),
+        station_id="89064",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].temperature_c == -1.7
+    assert rows[0].pressure_hpa == 978.2
+    assert rows[0].speed_mps == 6.4
+    assert rows[0].direction_deg == 225.0
+    assert rows[0].latitude is not None
+    assert rows[0].longitude is not None
+
+
+def test_fetch_station_data_parses_direction_numeric_with_symbol(monkeypatch):
+    responses = [
+        FakeResponse({"estado": 200, "datos": "https://example.test/data.json"}),
+        FakeResponse(
+            [
+                {
+                    "nombre": "GABRIEL DE CASTILLA",
+                    "fhora": "2025-02-18T10:10:00Z",
+                    "temp": "0.9",
+                    "pres": "975.4",
+                    "vel": "3.2",
+                    "dir": "270º",
+                }
+            ]
+        ),
+    ]
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+
+    client = AemetClient(api_key="ok-key")
+    rows = client.fetch_station_data(
+        start_utc=datetime(2025, 2, 18, 9, 0, tzinfo=UTC),
+        end_utc=datetime(2025, 2, 18, 11, 0, tzinfo=UTC),
+        station_id="89070",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].direction_deg == 270.0
+
+
+def test_fetch_station_data_parses_ddd_direction_key(monkeypatch):
+    responses = [
+        FakeResponse({"estado": 200, "datos": "https://example.test/data.json"}),
+        FakeResponse(
+            [
+                {
+                    "nombre": "JCI Estacion meteorologica",
+                    "fhora": "2024-02-15T00:10:00Z",
+                    "temp": 2.3,
+                    "pres": 983.3,
+                    "vel": 3.0,
+                    "ddd": 67.0,
+                }
+            ]
+        ),
+    ]
+    monkeypatch.setattr("app.services.aemet_client.httpx.Client", lambda timeout: FakeHttpClient(responses))
+
+    client = AemetClient(api_key="ok-key")
+    rows = client.fetch_station_data(
+        start_utc=datetime(2024, 2, 15, 0, 0, tzinfo=UTC),
+        end_utc=datetime(2024, 2, 15, 1, 0, tzinfo=UTC),
+        station_id="89064",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].direction_deg == 67.0
