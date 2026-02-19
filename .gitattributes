@@ -1,1 +1,0 @@
-aemet_cache.db filter=lfs diff=lfs merge=lfs -text
