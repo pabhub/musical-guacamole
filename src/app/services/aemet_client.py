@@ -192,7 +192,17 @@ class AemetClient:
         no_data_log_context: str | None = None,
     ) -> list[dict[str, Any]]:
         client = self._http_client
-        meta_response = self._throttled_get(client, endpoint, params={"api_key": self.api_key})
+        # Some AEMET endpoints (e.g. /antartida/) drop the TCP connection for date
+        # ranges with no data, instead of returning the normal 404 JSON.  Treat this
+        # as an empty result when the caller allows it.
+        try:
+            meta_response = self._throttled_get(client, endpoint, params={"api_key": self.api_key})
+        except UpstreamServiceError as exc:
+            if allow_no_data and "RemoteProtocolError" in str(exc):
+                context = f" ({no_data_log_context})" if no_data_log_context else ""
+                logger.info("AEMET connection reset (no data for requested window)%s: %s", context, exc)
+                return []
+            raise
         try:
             meta_response.raise_for_status()
         except httpx.HTTPStatusError as exc:
