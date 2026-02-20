@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.core.exceptions import AppValidationError
@@ -73,12 +73,30 @@ class PlaybackQueryJobsMixin:
         windows = self._split_windows(history_start_utc, effective_end_utc)
         window_states: list[dict[str, Any]] = []
         cached_windows = 0
+        now_utc_dt = datetime.now(UTC)
+        # Freshness threshold for the current (in-progress) month: re-fetch if
+        # the window was cached more than 24 h ago so new AEMET observations are
+        # picked up. Past months (end_utc <= now) are cached permanently —
+        # historical data in Turso is never deleted.
+        current_month_freshness_hours = float(
+            getattr(self.settings, "current_month_freshness_hours", 24.0)
+        )
         for window_start, window_end in windows:
-            has_cached = self.repository.has_cached_fetch_window(
-                station_id=station_id,
-                start_utc=window_start,
-                end_utc=window_end,
-            )
+            is_current_month = window_end.replace(tzinfo=UTC) > now_utc_dt
+            if is_current_month:
+                min_fetched = now_utc_dt - timedelta(hours=current_month_freshness_hours)
+                has_cached = self.repository.has_fresh_fetch_window(
+                    station_id=station_id,
+                    start_utc=window_start,
+                    end_utc=window_end,
+                    min_fetched_at_utc=min_fetched,
+                )
+            else:
+                has_cached = self.repository.has_cached_fetch_window(
+                    station_id=station_id,
+                    start_utc=window_start,
+                    end_utc=window_end,
+                )
             if has_cached:
                 cached_windows += 1
             window_states.append(
