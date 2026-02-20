@@ -192,8 +192,7 @@ class PlaybackQueryJobsMixin:
         pending_indices.sort(key=lambda i: windows[i].get("startUtc", ""), reverse=True)
 
         # Track consecutive empty AEMET months to detect the data boundary.
-        # Antarctic data is only available for recent campaign seasons; once we see
-        # N consecutive empty months going backwards we've passed the oldest data point.
+        # Stop after 2 consecutive empty months — beyond that AEMET has no data for this station.
         consecutive_empty = 0
         _MAX_CONSECUTIVE_EMPTY = 2
 
@@ -379,10 +378,23 @@ class PlaybackQueryJobsMixin:
         station_id = str(payload["station_id"])
         timezone_input = str(payload["timezone_input"])
         output_tz = self._resolve_output_timezone(timezone_input)
-        start_local = datetime.fromisoformat(str(payload["requested_start_utc"])).astimezone(output_tz)
         end_local = datetime.fromisoformat(str(payload["effective_end_utc"])).astimezone(output_tz)
         aggregation = TimeAggregation(str(payload["aggregation"]))
         selected_types = [MeasurementType(value) for value in payload.get("selected_types_json", [])]
+
+        # Trim start to the oldest window that actually has data in the DB.
+        # Using requested_start_utc (up to 2 years ago) would cause get_data to probe
+        # AEMET for every uncached month, triggering 429 rate-limit errors on the result call.
+        windows: list[dict] = list(payload.get("windows_json") or [])
+        data_windows = [
+            w for w in windows if w.get("status") in {"cached", "complete"}
+        ]
+        if data_windows:
+            oldest_start_str = min(w["startUtc"] for w in data_windows)
+            start_local = datetime.fromisoformat(str(oldest_start_str)).astimezone(output_tz)
+        else:
+            start_local = datetime.fromisoformat(str(payload["requested_start_utc"])).astimezone(output_tz)
+
         snapshot = self.get_station_snapshot(
             station=station_id,
             start_local=start_local,
