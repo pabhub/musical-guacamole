@@ -183,35 +183,41 @@ class PlaybackQueryJobsMixin:
             return
 
         # --- Bulk AEMET pre-fetch ---
-        # AEMET's /antartida/ endpoint returns the same presigned data URL for any
-        # date range — it always delivers all available data for the station.  One
-        # call for the full job window is therefore equivalent to N one-month calls
-        # but uses only 1 quota unit instead of N.
-        from app.models import SourceMeasurement  # local import to avoid circular dep
-        history_start_utc = datetime.fromisoformat(str(payload["history_start_utc"]))
+        # AEMET's /antartida/ endpoint returns the same presigned data file for any
+        # date window — all available station data is always included.  Use a recent
+        # 1-month range to avoid connection drops that AEMET triggers for very old or
+        # very large date ranges, while still fetching the complete dataset.
         effective_end_utc_dt = datetime.fromisoformat(str(payload["effective_end_utc"]))
+        # Start of the current (most-recent) month — safe range, always has metadata.
+        bulk_start = effective_end_utc_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        bulk_rows_by_month: dict[tuple[int, int], list[SourceMeasurement]] | None = None
+        bulk_rows_by_month: dict[tuple[int, int], list] | None = None
         try:
             all_rows = self.aemet_client.fetch_station_data(
-                history_start_utc, effective_end_utc_dt, station_id
+                bulk_start, effective_end_utc_dt, station_id
             )
-            bulk_rows_by_month = {}
-            for row in all_rows:
-                key = (row.measured_at_utc.year, row.measured_at_utc.month)
-                bulk_rows_by_month.setdefault(key, []).append(row)
-            logger.info(
-                "Bulk pre-fetch id=%s station=%s: %d rows across %d months.",
-                job_id, station_id, len(all_rows), len(bulk_rows_by_month),
-            )
+            if all_rows:
+                bulk_rows_by_month = {}
+                for row in all_rows:
+                    key = (row.measured_at_utc.year, row.measured_at_utc.month)
+                    bulk_rows_by_month.setdefault(key, []).append(row)
+                logger.info(
+                    "Bulk pre-fetch id=%s station=%s: %d rows across %d months.",
+                    job_id, station_id, len(all_rows), len(bulk_rows_by_month),
+                )
+            else:
+                logger.info(
+                    "Bulk pre-fetch returned 0 rows for station=%s; falling back to per-window calls.",
+                    station_id,
+                )
         except Exception as exc:
             logger.warning(
-                "Bulk pre-fetch failed for station=%s (%s); will fall back to per-window AEMET calls.",
+                "Bulk pre-fetch failed for station=%s (%s); falling back to per-window AEMET calls.",
                 station_id, exc,
             )
 
-        # If bulk succeeded, process all pending windows in this invocation (no per-window
-        # AEMET calls → no quota cost → safe to ignore max_windows for this path).
+        # If bulk succeeded with data, ignore max_windows — all windows are processed
+        # from the local dict with no per-window AEMET calls (no quota cost).
         effective_max_windows = None if bulk_rows_by_month is not None else max_windows
 
         processed_windows = 0
